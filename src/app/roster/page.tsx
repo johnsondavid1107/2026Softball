@@ -1,15 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AudioProvider } from "@/components/AudioProvider";
 import { PlayerCard } from "@/components/PlayerCard";
 import { AddPlayerForm } from "@/components/AddPlayerForm";
-import { type Player } from "@/lib/players";
-import {
-  isLocalPlayer,
-  readLocalRoster,
-  writeLocalRoster,
-} from "@/lib/localRoster";
+import type { Player } from "@/lib/players";
 
 type FormState =
   | { mode: "closed" }
@@ -17,58 +12,80 @@ type FormState =
   | { mode: "edit"; player: Player };
 
 export default function RosterPage() {
-  const [local, setLocal] = useState<Player[]>([]);
+  const [roster, setRoster] = useState<Player[]>([]);
+  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FormState>({ mode: "closed" });
 
-  const [kvRoster, setKvRoster] = useState<Player[]>([]);
-
-  useEffect(() => {
-    // Fetch the coach-managed KV roster.
-    fetch("/api/roster")
-      .then((r) => r.json())
-      .then((d: Player[]) => setKvRoster(Array.isArray(d) ? d : []))
-      .catch(() => {});
+  const fetchRoster = useCallback(async () => {
+    try {
+      const res = await fetch("/api/roster");
+      if (res.ok) {
+        const data = (await res.json()) as Player[];
+        setRoster(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      // Network error — keep whatever we have.
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    const refresh = () => setLocal(readLocalRoster());
-    refresh();
-    window.addEventListener("local-roster-updated", refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener("local-roster-updated", refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
+    fetchRoster();
+  }, [fetchRoster]);
 
-  function handleAdd(player: Player) {
-    const next = [...local, player];
-    writeLocalRoster(next);
-    setLocal(next);
+  async function handleAdd(player: Player) {
+    // Optimistic update — add immediately, then persist.
+    setRoster((prev) => {
+      const without = prev.filter((p) => p.id !== player.id);
+      return [...without, player].sort((a, b) => a.jerseyNumber - b.jerseyNumber);
+    });
     setForm({ mode: "closed" });
-  }
-
-  function handleUpdate(updated: Player) {
-    const next = local.map((p) => (p.id === updated.id ? updated : p));
-    writeLocalRoster(next);
-    setLocal(next);
-    setForm({ mode: "closed" });
-  }
-
-  function handleRemove(id: string) {
-    const next = local.filter((p) => p.id !== id);
-    writeLocalRoster(next);
-    setLocal(next);
-    if (form.mode === "edit" && form.player.id === id) {
-      setForm({ mode: "closed" });
+    try {
+      await fetch("/api/roster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(player),
+      });
+    } catch {
+      // Refresh to get true server state if the save failed.
+      fetchRoster();
     }
   }
 
-  // KV roster (coach-managed) + localStorage (parent self-added), deduped by id.
-  const kvIds = new Set(kvRoster.map((p) => p.id));
-  const merged = [...kvRoster, ...local.filter((p) => !kvIds.has(p.id))].sort(
-    (a, b) => a.jerseyNumber - b.jerseyNumber
-  );
+  async function handleUpdate(updated: Player) {
+    setRoster((prev) =>
+      prev
+        .map((p) => (p.id === updated.id ? updated : p))
+        .sort((a, b) => a.jerseyNumber - b.jerseyNumber)
+    );
+    setForm({ mode: "closed" });
+    try {
+      await fetch("/api/roster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      });
+    } catch {
+      fetchRoster();
+    }
+  }
+
+  async function handleRemove(id: string) {
+    setRoster((prev) => prev.filter((p) => p.id !== id));
+    if (form.mode === "edit" && form.player.id === id) setForm({ mode: "closed" });
+    try {
+      await fetch("/api/roster", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch {
+      fetchRoster();
+    }
+  }
+
+  const sorted = [...roster].sort((a, b) => a.jerseyNumber - b.jerseyNumber);
 
   return (
     <AudioProvider>
@@ -84,7 +101,7 @@ export default function RosterPage() {
         </p>
       </section>
 
-      {/* Add button — only shown when no form is open */}
+      {/* Add button */}
       {form.mode === "closed" && (
         <div className="px-4 pt-2 pb-4">
           <button
@@ -107,7 +124,7 @@ export default function RosterPage() {
         />
       )}
 
-      {/* Edit form — rendered inline above the list */}
+      {/* Edit form */}
       {form.mode === "edit" && (
         <AddPlayerForm
           mode="edit"
@@ -117,7 +134,16 @@ export default function RosterPage() {
         />
       )}
 
-      {merged.length === 0 ? (
+      {loading ? (
+        <div className="flex flex-col gap-2.5 px-4 pb-8">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="h-16 animate-pulse rounded-2xl bg-team-green/10"
+            />
+          ))}
+        </div>
+      ) : sorted.length === 0 ? (
         <div className="mx-4 rounded-2xl border border-dashed border-team-green/30 bg-white/50 p-8 text-center">
           <div className="text-2xl">⚾</div>
           <div className="mt-2 text-sm font-semibold text-team-green-dark">
@@ -129,11 +155,11 @@ export default function RosterPage() {
         </div>
       ) : (
         <ul className="flex flex-col gap-2.5 px-4 pb-8">
-          {merged.map((p) => (
+          {sorted.map((p) => (
             <PlayerCard
               key={p.id}
               player={p}
-              editable={isLocalPlayer(p.id)}
+              editable
               onEdit={(player) => setForm({ mode: "edit", player })}
               onRemove={handleRemove}
             />
