@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-team-cream text-team-green-dark font-sans;
+    /* Safe-area-aware background — fills behind notch and home bar */
+    background-color: #fffbea;
+    min-height: 100dvh;
+  }
+
+  /* Never let the browser zoom inputs on focus (iOS Safari) */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+@layer utilities {
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tap {
+    /* enforce 44pt minimum tap target */
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
