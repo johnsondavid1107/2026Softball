@@ -1,42 +1,48 @@
 /**
- * Open-Meteo client. Free, no API key. Returns a daily forecast for our
- * home field for a contiguous date range. The free daily forecast covers
- * ~16 days, which is enough for a ~2-month softball season one row at a time.
+ * Open-Meteo client. Free, no API key. We pull *hourly* data so each event
+ * row can show the forecast at the actual game/practice start time, not the
+ * misleading daily high.
+ *
+ * Open-Meteo's free hourly forecast covers 16 days, which is enough to
+ * surface "looks like rain Saturday" several days out for a 2-month season.
  */
 
 import { LOCATION } from "./schedule";
 
-export type DailyWeather = {
-  date: string; // YYYY-MM-DD
+export type HourlyWeather = {
+  /** "YYYY-MM-DD" local date */
+  date: string;
+  /** 0–23 local hour */
+  hour: number;
   weatherCode: number;
-  tempMaxF: number;
-  precipProbMax: number; // percent 0..100
+  tempF: number;
+  precipProb: number; // 0..100
 };
 
 type OpenMeteoResponse = {
-  daily?: {
-    time: string[];
+  hourly?: {
+    time: string[]; // "2026-04-13T18:00"
     weather_code: number[];
-    temperature_2m_max: number[];
-    precipitation_probability_max: number[];
+    temperature_2m: number[];
+    precipitation_probability: number[];
   };
 };
 
 /**
- * Fetch a daily forecast for a range of dates. The caller should only include
- * dates that are within the forecast horizon (today .. today+16d).
+ * Fetch hourly forecast for a contiguous date range. Returns one entry per
+ * hour. The caller filters down to the hours it cares about.
  */
-export async function fetchForecast(
+export async function fetchHourlyForecast(
   startDate: string,
   endDate: string,
   signal?: AbortSignal
-): Promise<DailyWeather[]> {
+): Promise<HourlyWeather[]> {
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude", String(LOCATION.lat));
   url.searchParams.set("longitude", String(LOCATION.lon));
   url.searchParams.set(
-    "daily",
-    "weather_code,temperature_2m_max,precipitation_probability_max"
+    "hourly",
+    "weather_code,temperature_2m,precipitation_probability"
   );
   url.searchParams.set("temperature_unit", "fahrenheit");
   url.searchParams.set("timezone", "America/New_York");
@@ -46,15 +52,21 @@ export async function fetchForecast(
   const res = await fetch(url.toString(), { signal });
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
   const json = (await res.json()) as OpenMeteoResponse;
-  const d = json.daily;
-  if (!d) return [];
+  const h = json.hourly;
+  if (!h) return [];
 
-  return d.time.map((date, i) => ({
-    date,
-    weatherCode: d.weather_code[i],
-    tempMaxF: Math.round(d.temperature_2m_max[i]),
-    precipProbMax: d.precipitation_probability_max[i],
-  }));
+  return h.time.map((iso, i) => {
+    // iso looks like "2026-04-13T18:00"
+    const [date, time] = iso.split("T");
+    const hour = parseInt(time.slice(0, 2), 10);
+    return {
+      date,
+      hour,
+      weatherCode: h.weather_code[i],
+      tempF: Math.round(h.temperature_2m[i]),
+      precipProb: h.precipitation_probability[i] ?? 0,
+    };
+  });
 }
 
 /**

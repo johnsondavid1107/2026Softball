@@ -1,25 +1,615 @@
-/**
- * Placeholder admin page. This will be password-gated and wired up to:
- *  - Toggle/clear the announcement banner (KV)
- *  - Edit/cancel individual events (push .ics updates via Resend)
- *  - Manage subscriber list
- *  - CRUD roster players + walk-out songs (iTunes search)
- *
- * Not functional yet — we're waiting on Resend + Vercel KV provisioning.
- */
+"use client";
+
+import { useEffect, useState } from "react";
+import clsx from "clsx";
+import { SCHEDULE } from "@/lib/schedule";
+import { AddPlayerForm } from "@/components/AddPlayerForm";
+import { AudioProvider } from "@/components/AudioProvider";
+import type { Player } from "@/lib/players";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Tab = "banner" | "games" | "subscribers" | "roster";
+
+type EventOverride = {
+  status: "cancelled" | "rescheduled";
+  newDate?: string;
+  newStartTime?: string;
+  newEndTime?: string;
+};
+
+// ─── Root ─────────────────────────────────────────────────────────────────────
+
 export default function AdminPage() {
+  const [authed, setAuthed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/status")
+      .then((r) => setAuthed(r.ok))
+      .catch(() => setAuthed(false));
+  }, []);
+
+  if (authed === null) return <LoadingScreen />;
+  if (!authed) return <LoginForm onSuccess={() => setAuthed(true)} />;
+  return <AdminDashboard onLogout={() => setAuthed(false)} />;
+}
+
+// ─── Loading ──────────────────────────────────────────────────────────────────
+
+function LoadingScreen() {
   return (
-    <div className="px-5 py-10 text-center">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-team-green/60">
-        Admin
-      </div>
-      <h1 className="mt-1 text-2xl font-bold text-team-green-dark">
-        Coach Panel
-      </h1>
-      <p className="mx-auto mt-3 max-w-xs text-sm text-team-green/70">
-        This page will let you post announcements, edit or cancel games, and
-        manage the roster. Coming online once email + storage are wired.
-      </p>
+    <div className="flex min-h-[60vh] items-center justify-center text-team-green/40 text-sm">
+      Loading…
     </div>
+  );
+}
+
+// ─── Login form ───────────────────────────────────────────────────────────────
+
+function LoginForm({ onSuccess }: { onSuccess: () => void }) {
+  const [pw, setPw] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw }),
+      });
+      if (res.ok) {
+        onSuccess();
+      } else {
+        setError("Wrong password.");
+      }
+    } catch {
+      setError("Network error — try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex min-h-[70vh] items-center justify-center px-6">
+      <form onSubmit={submit} className="w-full max-w-xs">
+        <div className="mb-6 text-center">
+          <div className="text-[11px] font-bold uppercase tracking-widest text-team-green/50">
+            Admin
+          </div>
+          <h1 className="mt-1 text-2xl font-black text-team-green-dark">
+            Coach Panel
+          </h1>
+        </div>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-team-green/60">
+            Password
+          </span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            autoFocus
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            className="tap w-full rounded-xl border border-team-green/20 bg-white px-4 text-team-green-dark focus:border-team-green focus:outline-none focus:ring-2 focus:ring-team-gold/40"
+          />
+        </label>
+        {error && (
+          <p className="mt-2 text-[12px] text-red-600">{error}</p>
+        )}
+        <button
+          type="submit"
+          disabled={busy}
+          className="tap mt-4 w-full rounded-xl bg-team-green py-3 text-base font-bold text-team-gold disabled:opacity-60 active:bg-team-green-dark"
+        >
+          {busy ? "Checking…" : "Sign in"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+
+function AdminDashboard({ onLogout }: { onLogout: () => void }) {
+  const [tab, setTab] = useState<Tab>("banner");
+
+  async function logout() {
+    await fetch("/api/admin/logout", { method: "POST" });
+    onLogout();
+  }
+
+  return (
+    <div>
+      {/* Tab bar */}
+      <div className="flex border-b border-team-green/10 bg-white px-2">
+        {(["banner", "games", "subscribers", "roster"] as Tab[]).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={clsx(
+              "tap flex-1 py-2.5 text-[12px] font-semibold capitalize transition-colors",
+              tab === t
+                ? "border-b-2 border-team-green text-team-green-dark"
+                : "text-team-green/50"
+            )}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      <div className="px-4 py-5">
+        {tab === "banner" && <BannerTab />}
+        {tab === "games" && <GamesTab />}
+        {tab === "subscribers" && <SubscribersTab />}
+        {tab === "roster" && <RosterTab />}
+      </div>
+
+      <div className="px-4 pb-10 text-center">
+        <button
+          type="button"
+          onClick={logout}
+          className="text-[12px] text-team-green/40 underline active:text-team-green-dark"
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Banner tab ───────────────────────────────────────────────────────────────
+
+function BannerTab() {
+  const [message, setMessage] = useState("");
+  const [current, setCurrent] = useState<{ message: string; postedAt: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/banner")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.message) {
+          setCurrent(d);
+          setMessage(d.message);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function publish() {
+    if (!message.trim()) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      await fetch("/api/admin/banner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+      setCurrent({ message, postedAt: new Date().toISOString() });
+      setStatus("Published.");
+    } catch {
+      setStatus("Error — try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clear() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      await fetch("/api/admin/banner", { method: "DELETE" });
+      setCurrent(null);
+      setMessage("");
+      setStatus("Banner cleared.");
+    } catch {
+      setStatus("Error — try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section>
+      <SectionHeading>Announcement Banner</SectionHeading>
+      <p className="mb-3 text-[13px] text-team-green/60">
+        Appears at the top of the schedule page for all parents. Use for rain
+        cancellations, jersey notes, snack reminders, etc.
+      </p>
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        rows={3}
+        placeholder="e.g. Today's game is cancelled due to rain. Stay dry! ☔"
+        className="w-full rounded-xl border border-team-green/20 bg-white p-3 text-[14px] text-team-green-dark placeholder:text-team-green/30 focus:border-team-green focus:outline-none focus:ring-2 focus:ring-team-gold/40"
+      />
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          onClick={publish}
+          disabled={busy || !message.trim()}
+          className="tap flex-1 rounded-xl bg-team-green py-2.5 text-sm font-bold text-team-gold disabled:opacity-50 active:bg-team-green-dark"
+        >
+          Publish
+        </button>
+        {current && (
+          <button
+            type="button"
+            onClick={clear}
+            disabled={busy}
+            className="tap rounded-xl border border-team-green/20 px-4 py-2.5 text-sm font-semibold text-team-green-dark disabled:opacity-50 active:bg-team-cream"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      {status && (
+        <p className="mt-2 text-[12px] text-team-green/60">{status}</p>
+      )}
+      {current && (
+        <div className="mt-3 rounded-xl border-l-4 border-team-gold bg-team-gold/10 p-3 text-[13px] text-team-green-dark">
+          <span className="font-bold">Live now:</span> {current.message}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── Games tab ────────────────────────────────────────────────────────────────
+
+function GamesTab() {
+  const games = SCHEDULE.filter((e) => e.kind === "game");
+  const [overrides, setOverrides] = useState<Record<string, EventOverride>>({});
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editData, setEditData] = useState({ date: "", startTime: "", endTime: "" });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [sendEmails, setSendEmails] = useState(true);
+
+  async function doAction(
+    eventId: string,
+    action: "cancel" | "reschedule" | "restore",
+    extra?: { newDate?: string; newStartTime?: string; newEndTime?: string }
+  ) {
+    setBusy(eventId);
+    try {
+      await fetch("/api/admin/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId, action, sendEmails, ...extra }),
+      });
+      if (action === "restore") {
+        setOverrides((prev) => {
+          const n = { ...prev };
+          delete n[eventId];
+          return n;
+        });
+      } else {
+        setOverrides((prev) => ({
+          ...prev,
+          [eventId]: {
+            status: action === "cancel" ? "cancelled" : "rescheduled",
+            ...extra,
+          },
+        }));
+      }
+      setEditing(null);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const { TEAMS } = require("@/lib/schedule");
+
+  return (
+    <section>
+      <SectionHeading>Game Schedule</SectionHeading>
+      <label className="mb-3 flex items-center gap-2 text-[13px] text-team-green-dark">
+        <input
+          type="checkbox"
+          checked={sendEmails}
+          onChange={(e) => setSendEmails(e.target.checked)}
+          className="h-4 w-4 accent-team-green"
+        />
+        Notify subscribers by email when I make changes
+      </label>
+
+      <ul className="flex flex-col gap-2">
+        {games.map((event) => {
+          const ov = overrides[event.id];
+          const isBusy = busy === event.id;
+          const isEditing = editing === event.id;
+          const opponent = event.opponent ? TEAMS[event.opponent] : null;
+
+          return (
+            <li
+              key={event.id}
+              className={clsx(
+                "rounded-2xl border p-3",
+                ov?.status === "cancelled"
+                  ? "border-red-200 bg-red-50"
+                  : ov?.status === "rescheduled"
+                  ? "border-team-gold/40 bg-team-gold/10"
+                  : "border-team-green/15 bg-white"
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-team-green/50">
+                    {event.date} · {event.startTime}
+                  </div>
+                  <div className="font-bold text-team-green-dark">
+                    vs. {opponent?.sponsor ?? "TBD"}
+                  </div>
+                  {ov && (
+                    <div className={clsx(
+                      "mt-0.5 text-[11px] font-semibold",
+                      ov.status === "cancelled" ? "text-red-600" : "text-team-gold-dark"
+                    )}>
+                      {ov.status === "cancelled" ? "CANCELLED" : `RESCHEDULED${ov.newDate ? ` → ${ov.newDate}` : ""}${ov.newStartTime ? ` ${ov.newStartTime}` : ""}`}
+                    </div>
+                  )}
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  {ov ? (
+                    <button
+                      type="button"
+                      onClick={() => doAction(event.id, "restore")}
+                      disabled={isBusy}
+                      className="tap rounded-lg bg-team-green/10 px-3 py-1.5 text-[11px] font-bold text-team-green-dark active:bg-team-green/20 disabled:opacity-50"
+                    >
+                      Restore
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditing(event.id);
+                          setEditData({ date: event.date, startTime: event.startTime ?? "", endTime: event.endTime ?? "" });
+                        }}
+                        className="tap rounded-lg bg-team-gold/20 px-3 py-1.5 text-[11px] font-bold text-team-green-dark active:bg-team-gold/40"
+                      >
+                        Reschedule
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => doAction(event.id, "cancel")}
+                        disabled={isBusy}
+                        className="tap rounded-lg bg-red-100 px-3 py-1.5 text-[11px] font-bold text-red-700 active:bg-red-200 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {isEditing && (
+                <div className="mt-3 border-t border-team-green/10 pt-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    <label className="block">
+                      <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-team-green/50">New date</span>
+                      <input type="date" value={editData.date} onChange={(e) => setEditData((d) => ({ ...d, date: e.target.value }))}
+                        className="tap w-full rounded-lg border border-team-green/20 bg-team-cream px-2 text-[13px] text-team-green-dark focus:outline-none" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-team-green/50">Start</span>
+                      <input type="time" value={editData.startTime} onChange={(e) => setEditData((d) => ({ ...d, startTime: e.target.value }))}
+                        className="tap w-full rounded-lg border border-team-green/20 bg-team-cream px-2 text-[13px] text-team-green-dark focus:outline-none" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-team-green/50">End</span>
+                      <input type="time" value={editData.endTime} onChange={(e) => setEditData((d) => ({ ...d, endTime: e.target.value }))}
+                        className="tap w-full rounded-lg border border-team-green/20 bg-team-cream px-2 text-[13px] text-team-green-dark focus:outline-none" />
+                    </label>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <button type="button" onClick={() => setEditing(null)}
+                      className="tap flex-1 rounded-lg border border-team-green/20 py-2 text-[12px] font-semibold text-team-green-dark">
+                      Cancel
+                    </button>
+                    <button type="button" disabled={isBusy}
+                      onClick={() => doAction(event.id, "reschedule", { newDate: editData.date, newStartTime: editData.startTime, newEndTime: editData.endTime })}
+                      className="tap flex-[2] rounded-lg bg-team-green py-2 text-[12px] font-bold text-team-gold disabled:opacity-50">
+                      Save & notify
+                    </button>
+                  </div>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+// ─── Subscribers tab ──────────────────────────────────────────────────────────
+
+function SubscribersTab() {
+  const [subscribers, setSubscribers] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/admin/subscribers")
+      .then((r) => r.json())
+      .then(setSubscribers)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function remove(email: string) {
+    await fetch("/api/admin/subscribers", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    setSubscribers((prev) => prev.filter((e) => e !== email));
+  }
+
+  return (
+    <section>
+      <SectionHeading>
+        Calendar Subscribers{" "}
+        <span className="text-sm font-normal text-team-green/50">
+          ({subscribers.length})
+        </span>
+      </SectionHeading>
+      {loading ? (
+        <p className="text-[13px] text-team-green/50">Loading…</p>
+      ) : subscribers.length === 0 ? (
+        <p className="text-[13px] text-team-green/50">No subscribers yet.</p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {subscribers.map((email) => (
+            <li key={email} className="flex items-center justify-between rounded-xl border border-team-green/10 bg-white px-3 py-2.5">
+              <span className="truncate text-[13px] text-team-green-dark">{email}</span>
+              <button
+                type="button"
+                onClick={() => remove(email)}
+                className="tap ml-2 shrink-0 text-[11px] font-semibold text-red-500 active:text-red-700"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ─── Roster tab ───────────────────────────────────────────────────────────────
+
+function RosterTab() {
+  const [roster, setRoster] = useState<Player[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [formMode, setFormMode] = useState<"closed" | "add" | { mode: "edit"; player: Player }>("closed");
+
+  async function refresh() {
+    const r = await fetch("/api/admin/roster");
+    if (r.ok) setRoster(await r.json());
+  }
+
+  useEffect(() => {
+    refresh().finally(() => setLoading(false));
+  }, []);
+
+  async function handleSubmit(player: Player) {
+    await fetch("/api/admin/roster", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(player),
+    });
+    await refresh();
+    setFormMode("closed");
+  }
+
+  async function handleRemove(id: string) {
+    await fetch("/api/admin/roster", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setRoster((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  const sorted = [...roster].sort((a, b) => a.jerseyNumber - b.jerseyNumber);
+
+  return (
+    <AudioProvider>
+      <section>
+        <SectionHeading>Team Roster</SectionHeading>
+
+        {formMode === "closed" && (
+          <button
+            type="button"
+            onClick={() => setFormMode("add")}
+            className="tap mb-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-team-green py-3 text-sm font-bold text-team-gold active:bg-team-green-dark"
+          >
+            + Add player
+          </button>
+        )}
+
+        {formMode === "add" && (
+          <div className="mb-4">
+            <AddPlayerForm
+              mode="add"
+              onSubmit={handleSubmit}
+              onCancel={() => setFormMode("closed")}
+            />
+          </div>
+        )}
+
+        {typeof formMode === "object" && formMode.mode === "edit" && (
+          <div className="mb-4">
+            <AddPlayerForm
+              mode="edit"
+              initial={formMode.player}
+              onSubmit={handleSubmit}
+              onCancel={() => setFormMode("closed")}
+            />
+          </div>
+        )}
+
+        {loading ? (
+          <p className="text-[13px] text-team-green/50">Loading…</p>
+        ) : sorted.length === 0 ? (
+          <p className="text-[13px] text-team-green/50">No players yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {sorted.map((p) => (
+              <li key={p.id} className="flex items-center justify-between rounded-xl border border-team-green/15 bg-white px-3 py-2.5">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-team-green text-sm font-black text-team-gold">
+                    #{p.jerseyNumber}
+                  </span>
+                  <div>
+                    <div className="text-[14px] font-bold text-team-green-dark">{p.firstName}</div>
+                    {p.song && (
+                      <div className="truncate text-[11px] text-team-green/60">
+                        {p.song.trackName} — {p.song.artistName}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFormMode({ mode: "edit", player: p })}
+                    className="tap text-[11px] font-semibold text-team-green-dark underline"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(p.id)}
+                    className="tap text-[11px] font-semibold text-red-500"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </AudioProvider>
+  );
+}
+
+// ─── Shared ───────────────────────────────────────────────────────────────────
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mb-3 text-base font-bold text-team-green-dark">{children}</h2>
   );
 }

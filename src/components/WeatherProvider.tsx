@@ -7,15 +7,20 @@ import {
   useMemo,
   useState,
 } from "react";
-import { fetchForecast, type DailyWeather } from "@/lib/weather";
+import { fetchHourlyForecast, type HourlyWeather } from "@/lib/weather";
 import { SCHEDULE, isoDate } from "@/lib/schedule";
 
-type WeatherMap = Record<string, DailyWeather | undefined>;
+type WeatherMap = Record<string, HourlyWeather | undefined>;
 
 const WeatherContext = createContext<WeatherMap>({});
 
-/** Forecast horizon in days — Open-Meteo free daily forecast reaches ~16d. */
+/** Forecast horizon in days — Open-Meteo free hourly forecast reaches ~16d. */
 const HORIZON_DAYS = 16;
+
+/** Build the lookup key for a given date + hour. */
+function key(date: string, hour: number): string {
+  return `${date}@${hour}`;
+}
 
 export function WeatherProvider({ children }: { children: React.ReactNode }) {
   const [map, setMap] = useState<WeatherMap>({});
@@ -38,10 +43,10 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!range) return;
     const ctrl = new AbortController();
-    fetchForecast(range.start, range.end, ctrl.signal)
-      .then((days) => {
+    fetchHourlyForecast(range.start, range.end, ctrl.signal)
+      .then((hours) => {
         const next: WeatherMap = {};
-        for (const d of days) next[d.date] = d;
+        for (const h of hours) next[key(h.date, h.hour)] = h;
         setMap(next);
       })
       .catch(() => {
@@ -55,6 +60,17 @@ export function WeatherProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useWeatherFor(date: string): DailyWeather | undefined {
-  return useContext(WeatherContext)[date];
+/**
+ * Look up the forecast for a specific date + start time (HH:MM, 24h).
+ * Returns undefined if the event is outside the forecast horizon or the
+ * fetch hasn't landed yet.
+ */
+export function useWeatherForEvent(
+  date: string,
+  startTime?: string
+): HourlyWeather | undefined {
+  const map = useContext(WeatherContext);
+  if (!startTime) return undefined;
+  const hour = parseInt(startTime.slice(0, 2), 10);
+  return map[key(date, hour)];
 }

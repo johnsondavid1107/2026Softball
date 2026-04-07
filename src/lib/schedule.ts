@@ -28,8 +28,8 @@ export const LOCATION = {
   name: "Smith School",
   address: "Hillsdale Avenue",
   // Smith School, Hillsdale NJ — used for weather lookups and map links.
-  lat: 41.0073,
-  lon: -74.0368,
+  lat: 41.0039,
+  lon: -74.0615,
 };
 
 export type EventKind = "game" | "practice" | "bye";

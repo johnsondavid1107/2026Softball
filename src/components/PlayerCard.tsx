@@ -6,30 +6,40 @@ import { useAudioPlayer } from "./AudioProvider";
 
 type Props = {
   player: Player;
-  /** When true, show a small remove button (used for parent-added entries). */
-  removable?: boolean;
+  /** When true, show edit + remove buttons (used for parent-added entries). */
+  editable?: boolean;
+  onEdit?: (player: Player) => void;
   onRemove?: (id: string) => void;
 };
 
-export function PlayerCard({ player, removable, onRemove }: Props) {
+export function PlayerCard({ player, editable, onEdit, onRemove }: Props) {
   const { currentId, play } = useAudioPlayer();
   const isPlaying = currentId === player.id;
   const song = player.song;
   const hasPreview = !!song?.previewUrl;
 
+  const initial = player.firstName.charAt(0).toUpperCase();
+
   return (
     <li className="flex items-center gap-3 rounded-2xl border border-team-green/15 bg-white px-4 py-3 shadow-card">
-      {/* Jersey number */}
-      <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-team-green text-team-gold shadow-inner">
-        <span className="text-2xl font-black tabular-nums leading-none">
+      {/* Jersey number badge — rectangular tag with # prefix so it's never
+          confused with a list position or ranking. */}
+      <div className="flex w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-team-green py-2 shadow-inner">
+        <span className="text-[9px] font-extrabold uppercase tracking-widest text-team-gold/70">
+          jersey
+        </span>
+        <span className="text-[11px] font-bold leading-none text-team-gold/80">
+          #
+        </span>
+        <span className="text-2xl font-black tabular-nums leading-none text-team-gold">
           {player.jerseyNumber}
         </span>
       </div>
 
-      {/* Name + song */}
+      {/* Initial + song */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="truncate text-base font-bold text-team-green-dark">
-          {player.firstName}
+        <div className="text-lg font-black tracking-tight text-team-green-dark">
+          {initial}.
         </div>
         {song ? (
           <div className="mt-0.5 flex items-center gap-2">
@@ -62,7 +72,7 @@ export function PlayerCard({ player, removable, onRemove }: Props) {
         )}
       </div>
 
-      {/* Right side: play button (if previewable), remove button (if removable) */}
+      {/* Right side: play / edit / remove */}
       <div className="flex shrink-0 items-center gap-1.5">
         {hasPreview && (
           <button
@@ -81,7 +91,17 @@ export function PlayerCard({ player, removable, onRemove }: Props) {
             {isPlaying ? <PauseIcon /> : <PlayIcon />}
           </button>
         )}
-        {removable && (
+        {editable && (
+          <button
+            type="button"
+            onClick={() => onEdit?.(player)}
+            aria-label={`Edit ${player.firstName}`}
+            className="tap flex h-11 w-9 items-center justify-center text-team-green/40 active:text-team-green-dark"
+          >
+            <PencilIcon />
+          </button>
+        )}
+        {editable && (
           <button
             type="button"
             onClick={() => onRemove?.(player.id)}
@@ -116,6 +136,14 @@ function MusicIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.21a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
     </svg>
   );
 }

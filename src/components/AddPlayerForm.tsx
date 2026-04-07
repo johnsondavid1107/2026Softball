@@ -1,14 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
 import type { Player, WalkOutSong } from "@/lib/players";
 import { newLocalId, normalizeFirstName } from "@/lib/localRoster";
 import { useAudioPlayer } from "./AudioProvider";
 
-type Props = {
-  onAdd: (player: Player) => void;
-};
+type Props =
+  | { mode: "add"; onSubmit: (player: Player) => void; onCancel?: () => void }
+  | {
+      mode: "edit";
+      initial: Player;
+      onSubmit: (player: Player) => void;
+      onCancel: () => void;
+    };
 
 type SongHit = {
   trackId: number;
@@ -25,19 +30,29 @@ type SearchState =
   | { kind: "empty" }
   | { kind: "error" };
 
-export function AddPlayerForm({ onAdd }: Props) {
-  const [open, setOpen] = useState(false);
-  const [firstName, setFirstName] = useState("");
-  const [jersey, setJersey] = useState("");
-  const [songQuery, setSongQuery] = useState("");
+export function AddPlayerForm(props: Props) {
+  const initial = props.mode === "edit" ? props.initial : null;
+
+  const [open, setOpen] = useState(props.mode === "edit");
+  const [firstName, setFirstName] = useState(initial?.firstName ?? "");
+  const [jersey, setJersey] = useState(
+    initial?.jerseyNumber ? String(initial.jerseyNumber) : ""
+  );
+  const [songQuery, setSongQuery] = useState(
+    initial?.song
+      ? `${initial.song.trackName} — ${initial.song.artistName}`
+      : ""
+  );
   const [search, setSearch] = useState<SearchState>({ kind: "idle" });
-  const [chosen, setChosen] = useState<WalkOutSong | null>(null);
+  const [chosen, setChosen] = useState<WalkOutSong | null>(
+    initial?.song ?? null
+  );
   const [formError, setFormError] = useState<string | null>(null);
   const { play, currentId, stop } = useAudioPlayer();
 
-  // Debounced iTunes search whenever the user types in the song field.
+  // Debounced iTunes search
   useEffect(() => {
-    if (chosen) return; // user already picked one — don't keep searching
+    if (chosen) return;
     const term = songQuery.trim();
     if (term.length < 2) {
       setSearch({ kind: "idle" });
@@ -69,7 +84,6 @@ export function AddPlayerForm({ onAdd }: Props) {
     };
   }, [songQuery, chosen]);
 
-  // Stop any preview playback when the form closes.
   useEffect(() => {
     if (!open) stop();
   }, [open, stop]);
@@ -86,6 +100,7 @@ export function AddPlayerForm({ onAdd }: Props) {
   function close() {
     setOpen(false);
     reset();
+    props.onCancel?.();
   }
 
   function pick(hit: SongHit) {
@@ -106,10 +121,16 @@ export function AddPlayerForm({ onAdd }: Props) {
     stop();
   }
 
+  function clearSong() {
+    setChosen(null);
+    setSongQuery("");
+    setSearch({ kind: "idle" });
+    stop();
+  }
+
   function addAnyway() {
     const term = songQuery.trim();
     if (!term) return;
-    // Try to split "Title - Artist" if the user typed it that way.
     const m = term.match(/^(.*?)\s+[-–—]\s+(.*)$/);
     const trackName = m ? m[1].trim() : term;
     const artistName = m ? m[2].trim() : "Unknown artist";
@@ -131,13 +152,16 @@ export function AddPlayerForm({ onAdd }: Props) {
       setFormError("Please enter a jersey number.");
       return;
     }
-    onAdd({
-      id: newLocalId(),
+    props.onSubmit({
+      id: initial?.id ?? newLocalId(),
       firstName: name,
       jerseyNumber: num,
       song: chosen ?? undefined,
     });
-    close();
+    if (props.mode === "add") {
+      setOpen(false);
+      reset();
+    }
   }
 
   if (!open) {
@@ -162,7 +186,7 @@ export function AddPlayerForm({ onAdd }: Props) {
     >
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-base font-bold text-team-green-dark">
-          Add a player
+          {props.mode === "edit" ? "Edit player" : "Add a player"}
         </h2>
         <button
           type="button"
@@ -229,14 +253,13 @@ export function AddPlayerForm({ onAdd }: Props) {
           )}
         </div>
 
-        {/* Search feedback */}
         {!chosen && search.kind === "loading" && (
           <p className="mt-2 text-[12px] text-team-green/60">Searching…</p>
         )}
 
         {!chosen && search.kind === "error" && (
           <p className="mt-2 text-[12px] text-team-gold-dark">
-            Couldn&rsquo;t reach the music search. Try again or add anyway.
+            Couldn&rsquo;t reach music search. Try again or add anyway.
           </p>
         )}
 
@@ -247,9 +270,7 @@ export function AddPlayerForm({ onAdd }: Props) {
                 key={hit.trackId}
                 hit={hit}
                 isPlaying={currentId === `hit-${hit.trackId}`}
-                onPlay={() =>
-                  play(`hit-${hit.trackId}`, hit.previewUrl)
-                }
+                onPlay={() => play(`hit-${hit.trackId}`, hit.previewUrl)}
                 onPick={() => pick(hit)}
               />
             ))}
@@ -285,11 +306,7 @@ export function AddPlayerForm({ onAdd }: Props) {
         {chosen && (
           <div className="mt-2 flex items-center gap-2 rounded-xl bg-team-green/5 p-2">
             {chosen.artworkUrl ? (
-              <img
-                src={chosen.artworkUrl}
-                alt=""
-                className="h-9 w-9 rounded-md"
-              />
+              <img src={chosen.artworkUrl} alt="" className="h-9 w-9 rounded-md" />
             ) : (
               <div className="flex h-9 w-9 items-center justify-center rounded-md bg-team-green/10 text-team-green/60">
                 <MusicIcon />
@@ -304,9 +321,14 @@ export function AddPlayerForm({ onAdd }: Props) {
                 {!chosen.previewUrl && " • text only"}
               </div>
             </div>
-            <span className="text-team-green-dark" aria-hidden>
-              ✓
-            </span>
+            <button
+              type="button"
+              onClick={clearSong}
+              aria-label="Remove song"
+              className="tap flex h-9 w-9 shrink-0 items-center justify-center text-team-green/40 active:text-team-green-dark"
+            >
+              <CloseIcon />
+            </button>
           </div>
         )}
       </Field>
@@ -329,20 +351,16 @@ export function AddPlayerForm({ onAdd }: Props) {
           type="submit"
           className="tap flex-[2] rounded-xl bg-team-green px-3 py-2.5 text-sm font-bold text-team-gold active:bg-team-green-dark"
         >
-          Add to roster
+          {props.mode === "edit" ? "Save changes" : "Add to roster"}
         </button>
       </div>
     </form>
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+// ── sub-components ────────────────────────────────────────────────────────────
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="mb-3 block">
       <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-team-green/60">
@@ -366,11 +384,7 @@ function SongHitRow({
 }) {
   return (
     <li className="flex items-center gap-2 rounded-xl border border-team-green/10 bg-team-cream/60 p-2">
-      <img
-        src={hit.artworkUrl100}
-        alt=""
-        className="h-10 w-10 shrink-0 rounded-md"
-      />
+      <img src={hit.artworkUrl100} alt="" className="h-10 w-10 shrink-0 rounded-md" />
       <button
         type="button"
         onClick={onPick}
@@ -395,6 +409,8 @@ function SongHitRow({
   );
 }
 
+// ── icons ─────────────────────────────────────────────────────────────────────
+
 function PlusIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -402,7 +418,6 @@ function PlusIcon() {
     </svg>
   );
 }
-
 function CloseIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -410,7 +425,6 @@ function CloseIcon() {
     </svg>
   );
 }
-
 function PlayIconSm() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -418,7 +432,6 @@ function PlayIconSm() {
     </svg>
   );
 }
-
 function PauseIconSm() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -426,7 +439,6 @@ function PauseIconSm() {
     </svg>
   );
 }
-
 function MusicIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">

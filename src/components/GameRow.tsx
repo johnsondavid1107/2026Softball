@@ -101,7 +101,7 @@ export function GameRow({ event, todayIso, nowIso }: Props) {
           </div>
         )}
         {(event.kind === "game" || event.kind === "practice") && (
-          <WeatherChip date={event.date} />
+          <WeatherChip date={event.date} startTime={event.startTime} />
         )}
         {isToday && (
           <span className="rounded-full bg-team-yellow px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-team-green-dark">
