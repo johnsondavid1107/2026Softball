@@ -42,20 +42,20 @@ export function SubscribeForm() {
         Every game on your calendar, automatically.
       </h2>
       <p className="mt-1 text-[13px] text-team-cream/80">
-        Add your email and we&rsquo;ll send calendar invites for every game with
-        a 1-hour reminder. Cancellations and reschedules update your calendar
-        automatically — no app, no sign-in.
+        Enter your email and we&rsquo;ll send you a subscribe link. One tap adds
+        all games with 1-hour reminders. Cancellations and reschedules sync on
+        their own — no app, no sign-in.
       </p>
 
       {status === "success" && (
         <div role="status" className="mt-4 rounded-xl bg-team-gold px-4 py-3 text-center text-sm font-semibold text-team-green-dark">
-          ✓ Check your email — invites are on their way.
+          ✓ Check your email for the calendar link.
         </div>
       )}
 
       {status === "already" && (
         <div role="status" className="mt-4 rounded-xl bg-team-gold/30 px-4 py-3 text-center text-sm text-team-cream">
-          You&rsquo;re already subscribed. Check your inbox for the invites.
+          You&rsquo;re already subscribed — check your inbox for the calendar link.
         </div>
       )}
 

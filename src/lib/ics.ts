@@ -1,37 +1,30 @@
 /**
- * RFC 5545 iCalendar (.ics) generator for Team 3 game invites.
+ * iCalendar (.ics) helpers for Team 3.
  *
- * Each game has a stable UID (derived from the event ID) so that sending an
- * updated .ics with the same UID + higher SEQUENCE overwrites the existing
- * calendar entry in Gmail/Apple Mail/Outlook without creating a duplicate.
+ * buildCalendarFeed() — builds a VCALENDAR with all game events.
+ * Served at /api/calendar as a webcal:// subscription URL.
  *
- * METHOD:REQUEST → create/update the event
- * METHOD:CANCEL  → remove the event from the calendar
+ * Parents subscribe once via the link emailed to them; their calendar app
+ * polls /api/calendar and reflects cancellations/reschedules automatically.
+ * No ORGANIZER / ATTENDEE / METHOD — no RSVP prompts, no Google errors.
  */
 
-import { TEAMS, LOCATION, OUR_TEAM, type TeamEvent } from "./schedule";
+import { TEAMS, LOCATION, OUR_TEAM, SCHEDULE, type TeamEvent } from "./schedule";
 import type { EventOverride } from "./kv";
 
 const PRODID = "-//AFC Urgent Care Softball//HillsdaleSoftball//EN";
-const TIMEZONE = "America/New_York";
-// Parse bare address out of "AFC Urgent Care <email@domain.com>"
-const _emailFrom = process.env.EMAIL_FROM ?? "";
-const _match = _emailFrom.match(/<(.+?)>/);
-const ORGANIZER_EMAIL = _match ? _match[1] : (_emailFrom || "noreply@resend.dev");
-const ORGANIZER_NAME = OUR_TEAM.sponsor;
 
-/** Format a local YYYY-MM-DD + HH:MM as an iCal TZID datetime string. */
+/** Format a local date+time as an iCal TZID datetime (no dashes/colons). */
 function icalDate(date: string, time: string): string {
-  // "2026-04-11" + "11:00" → "20260411T110000"
   return date.replace(/-/g, "") + "T" + time.replace(":", "") + "00";
 }
 
-/** Current UTC timestamp in iCal format for DTSTAMP. */
+/** Current timestamp in iCal UTC format for DTSTAMP / LAST-MODIFIED. */
 function dtstamp(): string {
   return new Date().toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";
 }
 
-/** Fold long lines per RFC 5545 (max 75 octets, continuation with CRLF + space). */
+/** Fold long lines per RFC 5545 (max 75 octets). */
 function fold(line: string): string {
   if (line.length <= 75) return line;
   let out = "";
@@ -42,115 +35,77 @@ function fold(line: string): string {
   return out + line;
 }
 
-function lines(...parts: string[]): string {
-  return parts.map(fold).join("\r\n") + "\r\n";
+function icsLine(line: string): string {
+  return fold(line) + "\r\n";
 }
 
-export type IcsMethod = "REQUEST" | "CANCEL";
-
-type IcsOptions = {
-  event: TeamEvent;
-  attendeeEmail: string;
-  method: IcsMethod;
-  override?: EventOverride | null;
-  sequence?: number;
-};
+// ─── Calendar feed ────────────────────────────────────────────────────────────
 
 /**
- * Build a single VCALENDAR .ics string for one game event.
+ * Build a full VCALENDAR feed incorporating any admin overrides from KV.
+ * Returned as a string ready to serve with Content-Type: text/calendar.
+ *
+ * This is what the webcal:// subscription URL serves. Calendar apps (Google,
+ * Apple, Outlook) poll this URL and reflect changes automatically.
  */
-export function buildIcs({
-  event,
-  attendeeEmail,
-  method,
-  override,
-  sequence = 0,
-}: IcsOptions): string {
-  const uid = `${event.id}@hillsdale-softball-team3`;
-
-  // Effective date/time — use override values if present.
-  const date = override?.newDate ?? event.date;
-  const startTime = override?.newStartTime ?? event.startTime ?? "10:00";
-  const endTime = override?.newEndTime ?? event.endTime ?? "11:30";
-
-  const opponentTeam = event.opponent ? TEAMS[event.opponent] : null;
-  const summary =
-    method === "CANCEL"
-      ? `CANCELLED: AFC Urgent Care vs. ${opponentTeam?.sponsor ?? "TBD"}`
-      : `AFC Urgent Care vs. ${opponentTeam?.sponsor ?? "TBD"}`;
-
-  const description =
-    method === "CANCEL"
-      ? `This game has been cancelled. Check the app for updates.`
-      : `Hillsdale Softball — ${OUR_TEAM.sponsor} (Team ${OUR_TEAM.number}) vs. ${
-          opponentTeam ? `${opponentTeam.sponsor} (Team ${opponentTeam.number})` : "TBD"
-        }\\n\\nLocation: ${LOCATION.name}, ${LOCATION.address}`;
-
-  const status = method === "CANCEL" ? "CANCELLED" : "CONFIRMED";
-
-  return (
-    lines(
-      "BEGIN:VCALENDAR",
-      "VERSION:2.0",
-      `PRODID:${PRODID}`,
-      "CALSCALE:GREGORIAN",
-      `METHOD:${method}`,
-      "BEGIN:VEVENT",
-      `UID:${uid}`,
-      `DTSTAMP:${dtstamp()}`,
-      `DTSTART;TZID=${TIMEZONE}:${icalDate(date, startTime)}`,
-      `DTEND;TZID=${TIMEZONE}:${icalDate(date, endTime)}`,
-      `SUMMARY:${summary}`,
-      `DESCRIPTION:${description}`,
-      `LOCATION:${LOCATION.name}, ${LOCATION.address}, Hillsdale, NJ`,
-      `ORGANIZER;CN=${ORGANIZER_NAME}:mailto:${ORGANIZER_EMAIL}`,
-      `ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Parent:mailto:${attendeeEmail}`,
-      `SEQUENCE:${sequence}`,
-      `STATUS:${status}`,
-      // 1-hour reminder
-      "BEGIN:VALARM",
-      "TRIGGER:-PT1H",
-      "ACTION:DISPLAY",
-      "DESCRIPTION:Game starts in 1 hour!",
-      "END:VALARM",
-      "END:VEVENT",
-      "END:VCALENDAR"
-    )
-  );
-}
-
-/**
- * Build .ics content for all upcoming (non-bye) games, returned as an array
- * of { eventId, filename, content } so the caller can attach them to an email.
- */
-export async function buildAllGameIcs(
-  attendeeEmail: string
-): Promise<{ eventId: string; filename: string; content: string }[]> {
-  const { SCHEDULE } = await import("./schedule");
+export async function buildCalendarFeed(): Promise<string> {
   const { getEventOverride, getEventSeq } = await import("./kv");
 
   const games = SCHEDULE.filter((e) => e.kind === "game");
 
-  return Promise.all(
-    games.map(async (event) => {
-      const override = await getEventOverride(event.id);
-      const sequence = await getEventSeq(event.id);
-      // Skip cancelled events in the initial invite blast — parent doesn't
-      // need a CANCEL attachment for something they've never received.
-      const method: IcsMethod =
-        override?.status === "cancelled" ? "CANCEL" : "REQUEST";
-      const content = buildIcs({
-        event,
-        attendeeEmail,
-        method,
-        override,
-        sequence,
-      });
-      return {
-        eventId: event.id,
-        filename: `${event.id}.ics`,
-        content,
-      };
-    })
-  );
+  let out = "";
+
+  // Calendar header
+  out += icsLine("BEGIN:VCALENDAR");
+  out += icsLine("VERSION:2.0");
+  out += icsLine(`PRODID:${PRODID}`);
+  out += icsLine("CALSCALE:GREGORIAN");
+  out += icsLine("X-WR-CALNAME:AFC Urgent Care Softball");
+  out += icsLine("X-WR-TIMEZONE:America/New_York");
+  // Tell calendar apps to refresh every 6 hours.
+  out += icsLine("REFRESH-INTERVAL;VALUE=DURATION:PT6H");
+  out += icsLine("X-PUBLISHED-TTL:PT6H");
+
+  const stamp = dtstamp();
+
+  for (const event of games) {
+    const override = await getEventOverride(event.id);
+    const seq = await getEventSeq(event.id);
+
+    const date = override?.newDate ?? event.date;
+    const startTime = override?.newStartTime ?? event.startTime ?? "10:00";
+    const endTime = override?.newEndTime ?? event.endTime ?? "11:30";
+    const isCancelled = override?.status === "cancelled";
+
+    const opponent = event.opponent ? TEAMS[event.opponent] : null;
+    const summary = isCancelled
+      ? `CANCELLED – ${OUR_TEAM.sponsor} vs. ${opponent?.sponsor ?? "TBD"}`
+      : `${OUR_TEAM.sponsor} vs. ${opponent?.sponsor ?? "TBD"}`;
+
+    const description = isCancelled
+      ? "This game has been cancelled. Check the team app for updates."
+      : `Hillsdale Softball • ${OUR_TEAM.sponsor} vs. ${opponent?.sponsor ?? "TBD"}\\nLocation: ${LOCATION.name}, ${LOCATION.address}`;
+
+    out += icsLine("BEGIN:VEVENT");
+    out += icsLine(`UID:${event.id}@hillsdale-softball-team3`);
+    out += icsLine(`DTSTAMP:${stamp}`);
+    out += icsLine(`LAST-MODIFIED:${stamp}`);
+    out += icsLine(`DTSTART;TZID=America/New_York:${icalDate(date, startTime)}`);
+    out += icsLine(`DTEND;TZID=America/New_York:${icalDate(date, endTime)}`);
+    out += icsLine(`SUMMARY:${summary}`);
+    out += icsLine(`DESCRIPTION:${description}`);
+    out += icsLine(`LOCATION:${LOCATION.name}, ${LOCATION.address}, Hillsdale, NJ`);
+    out += icsLine(`STATUS:${isCancelled ? "CANCELLED" : "CONFIRMED"}`);
+    out += icsLine(`SEQUENCE:${seq}`);
+    // 1-hour reminder
+    out += icsLine("BEGIN:VALARM");
+    out += icsLine("TRIGGER:-PT1H");
+    out += icsLine("ACTION:DISPLAY");
+    out += icsLine("DESCRIPTION:Game starts in 1 hour!");
+    out += icsLine("END:VALARM");
+    out += icsLine("END:VEVENT");
+  }
+
+  out += icsLine("END:VCALENDAR");
+  return out;
 }

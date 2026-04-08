@@ -1,15 +1,34 @@
 /**
  * Upstash Redis client + typed accessors for all persistent app data.
  *
- * Env vars (auto-injected by Vercel when the Upstash database is connected):
- *   UPSTASH_REDIS_REST_URL
- *   UPSTASH_REDIS_REST_TOKEN
+ * Vercel injects these when the Upstash database is connected to the project.
+ * Run `vercel env pull .env.local` to get them into your local environment.
+ *
+ * Supported naming conventions (Vercel has used both over time):
+ *   UPSTASH_REDIS_REST_URL  + UPSTASH_REDIS_REST_TOKEN   (standard)
+ *   KV_REST_API_URL         + KV_REST_API_TOKEN           (older Vercel naming)
  */
 
 import { Redis } from "@upstash/redis";
 import type { Player } from "./players";
 
-export const redis = Redis.fromEnv();
+const url =
+  process.env.UPSTASH_REDIS_REST_URL ??
+  process.env.KV_REST_API_URL;
+
+const token =
+  process.env.UPSTASH_REDIS_REST_TOKEN ??
+  process.env.KV_REST_API_TOKEN;
+
+if (!url || !token) {
+  console.error(
+    "[kv] Missing Redis env vars. Expected UPSTASH_REDIS_REST_URL + " +
+    "UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_URL + KV_REST_API_TOKEN). " +
+    "Run `vercel env pull .env.local` to pull them from your Vercel project."
+  );
+}
+
+export const redis = new Redis({ url: url ?? "", token: token ?? "" });
 
 // ─── Keys ────────────────────────────────────────────────────────────────────
 

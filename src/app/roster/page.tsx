@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AudioProvider } from "@/components/AudioProvider";
 import { PlayerCard } from "@/components/PlayerCard";
 import { AddPlayerForm } from "@/components/AddPlayerForm";
+import { ToastStack, type ToastData } from "@/components/Toast";
 import type { Player } from "@/lib/players";
 
 type FormState =
@@ -15,6 +16,17 @@ export default function RosterPage() {
   const [roster, setRoster] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FormState>({ mode: "closed" });
+  const [toasts, setToasts] = useState<ToastData[]>([]);
+  const toastId = useRef(0);
+
+  function showToast(message: string, kind: ToastData["kind"] = "error") {
+    const id = ++toastId.current;
+    setToasts((prev) => [...prev, { id, message, kind }]);
+  }
+
+  function dismissToast(id: number) {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }
 
   const fetchRoster = useCallback(async () => {
     try {
@@ -24,7 +36,7 @@ export default function RosterPage() {
         setRoster(Array.isArray(data) ? data : []);
       }
     } catch {
-      // Network error — keep whatever we have.
+      // Keep whatever we have on network error.
     } finally {
       setLoading(false);
     }
@@ -35,21 +47,35 @@ export default function RosterPage() {
   }, [fetchRoster]);
 
   async function handleAdd(player: Player) {
-    // Optimistic update — add immediately, then persist.
-    setRoster((prev) => {
-      const without = prev.filter((p) => p.id !== player.id);
-      return [...without, player].sort((a, b) => a.jerseyNumber - b.jerseyNumber);
-    });
+    // Optimistic update.
+    setRoster((prev) =>
+      [...prev, player].sort((a, b) => a.jerseyNumber - b.jerseyNumber)
+    );
     setForm({ mode: "closed" });
+
     try {
-      await fetch("/api/roster", {
+      const res = await fetch("/api/roster", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(player),
       });
+
+      if (res.status === 409) {
+        const json = (await res.json()) as { message?: string };
+        // Roll back the optimistic add.
+        setRoster((prev) => prev.filter((p) => p.id !== player.id));
+        setForm({ mode: "add" });
+        showToast(json.message ?? "That jersey number is already taken.");
+        return;
+      }
+
+      if (!res.ok) {
+        setRoster((prev) => prev.filter((p) => p.id !== player.id));
+        showToast("Couldn't save — please try again.");
+      }
     } catch {
-      // Refresh to get true server state if the save failed.
-      fetchRoster();
+      setRoster((prev) => prev.filter((p) => p.id !== player.id));
+      showToast("Network error — please try again.");
     }
   }
 
@@ -60,12 +86,24 @@ export default function RosterPage() {
         .sort((a, b) => a.jerseyNumber - b.jerseyNumber)
     );
     setForm({ mode: "closed" });
+
     try {
-      await fetch("/api/roster", {
+      const res = await fetch("/api/roster", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
+
+      if (res.status === 409) {
+        const json = (await res.json()) as { message?: string };
+        // Roll back.
+        fetchRoster();
+        setForm({ mode: "edit", player: updated });
+        showToast(json.message ?? "That jersey number is already taken.");
+        return;
+      }
+
+      if (!res.ok) fetchRoster();
     } catch {
       fetchRoster();
     }
@@ -101,7 +139,6 @@ export default function RosterPage() {
         </p>
       </section>
 
-      {/* Add button */}
       {form.mode === "closed" && (
         <div className="px-4 pt-2 pb-4">
           <button
@@ -115,7 +152,6 @@ export default function RosterPage() {
         </div>
       )}
 
-      {/* Add form */}
       {form.mode === "add" && (
         <AddPlayerForm
           mode="add"
@@ -124,7 +160,6 @@ export default function RosterPage() {
         />
       )}
 
-      {/* Edit form */}
       {form.mode === "edit" && (
         <AddPlayerForm
           mode="edit"
@@ -137,10 +172,7 @@ export default function RosterPage() {
       {loading ? (
         <div className="flex flex-col gap-2.5 px-4 pb-8">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-16 animate-pulse rounded-2xl bg-team-green/10"
-            />
+            <div key={i} className="h-16 animate-pulse rounded-2xl bg-team-green/10" />
           ))}
         </div>
       ) : sorted.length === 0 ? (
@@ -166,6 +198,8 @@ export default function RosterPage() {
           ))}
         </ul>
       )}
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </AudioProvider>
   );
 }

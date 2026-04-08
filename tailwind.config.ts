@@ -29,13 +29,13 @@ const config: Config = {
         },
       },
       fontFamily: {
+        // Aldrich is loaded via next/font/google and injected as --font-aldrich.
+        // The system stack is kept as a fallback during the brief build-time
+        // period before the font CSS variable is available.
         sans: [
+          "var(--font-aldrich)",
           "-apple-system",
           "BlinkMacSystemFont",
-          "'Segoe UI'",
-          "Roboto",
-          "'Helvetica Neue'",
-          "Arial",
           "sans-serif",
         ],
       },

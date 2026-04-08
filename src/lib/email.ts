@@ -1,110 +1,137 @@
 /**
- * Resend email wrapper for sending .ics calendar invites.
+ * Resend email wrapper.
+ *
+ * subscribe flow  → sendSeasonInvites()  sends one email with the webcal://
+ *                   subscription link so parents add all games in one tap.
+ *
+ * admin update    → sendGameUpdate()     sends a plain-text notification that
+ *                   tells parents their calendar will update automatically.
  *
  * Env vars:
- *   RESEND_API_KEY   — Resend API key
- *   EMAIL_FROM       — Full "Name <email>" string, e.g.
- *                      "AFC Urgent Care <onboarding@resend.dev>"
+ *   RESEND_API_KEY        — Resend API key
+ *   EMAIL_FROM            — "Name <email>" string
+ *   NEXT_PUBLIC_APP_URL   — canonical origin, e.g. https://hillsdale-softball.vercel.app
  */
 
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-/** Parse the bare address out of "Name <email@domain.com>". */
-export function parseFromAddress(from: string): string {
-  const m = from.match(/<(.+?)>/);
-  return m ? m[1] : from;
-}
-
-type Attachment = {
-  filename: string;
-  content: string; // raw ics string — will be base64-encoded
-  content_type: string;
-};
-
 type SendOptions = {
   to: string;
   subject: string;
   html: string;
   text: string;
-  attachments?: Attachment[];
 };
 
-export async function sendEmail(opts: SendOptions): Promise<void> {
+async function sendEmail(opts: SendOptions): Promise<void> {
   const from = process.env.EMAIL_FROM ?? "AFC Urgent Care <onboarding@resend.dev>";
-
   await resend.emails.send({
     from,
     to: opts.to,
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
-    attachments: opts.attachments?.map((a) => ({
-      filename: a.filename,
-      content: Buffer.from(a.content).toString("base64"),
-      content_type: a.content_type,
-    })),
   });
 }
 
+/** Build the calendar feed URL for use in emails. */
+function calendarUrl(): { webcal: string; google: string; https: string } {
+  const base =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ??
+    "https://hillsdale-softball.vercel.app";
+
+  const https = `${base}/api/calendar`;
+  const webcal = https.replace(/^https?:\/\//, "webcal://");
+  const google = `https://www.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`;
+
+  return { webcal, google, https };
+}
+
 /**
- * Send the full season invite to a newly-subscribed parent.
- * One email, all games as individual .ics attachments.
+ * Send a subscription confirmation email to a newly-subscribed parent.
+ * Includes the webcal:// link (one tap to subscribe on iPhone) and
+ * a Google Calendar link for Android/desktop users.
  */
 export async function sendSeasonInvites(email: string): Promise<void> {
-  const { buildAllGameIcs } = await import("./ics");
-  const games = await buildAllGameIcs(email);
+  const { webcal, google, https } = calendarUrl();
 
-  const attachments: Attachment[] = games.map((g) => ({
-    filename: g.filename,
-    content: g.content,
-    content_type: "text/calendar; method=REQUEST; charset=utf-8",
-  }));
+  const text = [
+    "You're subscribed to the AFC Urgent Care 2026 softball schedule!",
+    "",
+    "Add all games to your calendar with one tap:",
+    "",
+    "• iPhone / Apple Calendar:",
+    `  ${webcal}`,
+    "",
+    "• Google Calendar:",
+    `  ${google}`,
+    "",
+    "• Other calendar apps (add by URL):",
+    `  ${https}`,
+    "",
+    "Once you subscribe, your calendar will stay in sync automatically.",
+    "Cancellations and reschedules will update on their own — no action needed.",
+    "",
+    "Go team! 🥎",
+    "— Coach Chicolo & AFC Urgent Care",
+  ].join("\n");
+
+  const html = `
+    <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+      <div style="background:#1d5a36;border-radius:16px;padding:24px;color:#fff;text-align:center;">
+        <div style="font-size:13px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:#e8a922;margin-bottom:8px;">
+          AFC Urgent Care
+        </div>
+        <div style="font-size:22px;font-weight:800;line-height:1.2;">
+          You&rsquo;re on the schedule! 🥎
+        </div>
+        <div style="font-size:14px;color:rgba(255,255,255,0.8);margin-top:8px;">
+          Hillsdale Softball &bull; Smith School
+        </div>
+      </div>
+
+      <div style="padding:20px 0;color:#0f3a21;font-size:15px;line-height:1.6;">
+        <p>Subscribe to the calendar and all 2026 AFC Urgent Care games will appear automatically — with a 1-hour reminder before each one.</p>
+        <p>Cancellations and reschedules update your calendar on their own. No need to do anything.</p>
+      </div>
+
+      <div style="text-align:center;margin-bottom:16px;">
+        <a href="${webcal}"
+           style="display:inline-block;background:#1d5a36;color:#e8a922;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:12px;">
+          📅 Add to Apple Calendar
+        </a>
+      </div>
+      <div style="text-align:center;margin-bottom:20px;">
+        <a href="${google}"
+           style="display:inline-block;background:#e8a922;color:#0f3a21;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:12px;">
+          Add to Google Calendar
+        </a>
+      </div>
+
+      <p style="font-size:12px;color:#888;text-align:center;">
+        Or subscribe by URL in any calendar app:<br>
+        <a href="${https}" style="color:#1d5a36;">${https}</a>
+      </p>
+
+      <p style="font-size:13px;color:#888;text-align:center;margin-top:24px;">
+        &mdash; Coach Chicolo &amp; AFC Urgent Care
+      </p>
+    </div>
+  `;
 
   await sendEmail({
     to: email,
-    subject: "AFC Urgent Care — Your softball schedule is here 🥎",
-    text: [
-      "You're all set!",
-      "",
-      "We've attached calendar invites for every AFC Urgent Care game this season.",
-      "Open this email on your phone and tap each attachment to add the games",
-      "to your calendar with a 1-hour reminder.",
-      "",
-      "If a game is cancelled or rescheduled, we'll send you an updated invite",
-      "automatically — your calendar entry will change on its own.",
-      "",
-      "Go team!",
-      "— Coach Chicolo & AFC Urgent Care",
-    ].join("\n"),
-    html: `
-      <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
-        <div style="background:#1d5a36;border-radius:16px;padding:24px;color:#fff;text-align:center;">
-          <div style="font-size:13px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:#e8a922;margin-bottom:8px;">
-            AFC Urgent Care
-          </div>
-          <div style="font-size:22px;font-weight:800;line-height:1.2;">
-            Your 2026 Season Schedule
-          </div>
-          <div style="font-size:14px;color:rgba(255,255,255,0.8);margin-top:8px;">
-            Hillsdale Softball • Smith School
-          </div>
-        </div>
-        <div style="padding:20px 0;color:#0f3a21;font-size:15px;line-height:1.6;">
-          <p>You&rsquo;re all set! Tap each attachment below to add every game to your calendar with a 1-hour reminder.</p>
-          <p>If a game is cancelled or rescheduled, we&rsquo;ll send you an updated invite automatically — your calendar will change on its own.</p>
-          <p style="font-weight:600;">Go team! 🏆</p>
-          <p style="color:#888;font-size:13px;">— Coach Chicolo &amp; AFC Urgent Care</p>
-        </div>
-      </div>
-    `,
-    attachments,
+    subject: "AFC Urgent Care — subscribe to your 2026 softball schedule 🥎",
+    text,
+    html,
   });
 }
 
 /**
- * Send an update or cancellation notice for a single game to all subscribers.
+ * Notify all opted-in parents that a game was updated or cancelled.
+ * Their calendar apps will pick up the change automatically on the next
+ * poll (every 6 hours), so this email is informational only.
  */
 export async function sendGameUpdate(
   subscribers: string[],
@@ -113,46 +140,54 @@ export async function sendGameUpdate(
 ): Promise<void> {
   if (subscribers.length === 0) return;
 
-  const { SCHEDULE } = await import("./schedule");
-  const { getEventOverride, getEventSeq } = await import("./kv");
-  const { buildIcs } = await import("./ics");
+  const { SCHEDULE, TEAMS } = await import("./schedule");
+  const { getEventOverride } = await import("./kv");
 
   const event = SCHEDULE.find((e) => e.id === eventId);
   if (!event) return;
 
   const override = await getEventOverride(eventId);
-  const sequence = await getEventSeq(eventId);
-
-  const opponentName =
-    event.opponent
-      ? (await import("./schedule")).TEAMS[event.opponent].sponsor
-      : "TBD";
+  const opponentName = event.opponent ? TEAMS[event.opponent].sponsor : "TBD";
 
   const isCancel = method === "CANCEL";
+  const date = override?.newDate ?? event.date;
+  const startTime = override?.newStartTime ?? event.startTime ?? "10:00";
+
   const subject = isCancel
     ? `⚠️ Game cancelled — AFC Urgent Care vs. ${opponentName}`
-    : `📅 Game update — AFC Urgent Care vs. ${opponentName}`;
+    : `📅 Schedule update — AFC Urgent Care vs. ${opponentName}`;
 
-  // Send to each subscriber individually so each .ics is personalised with
-  // their email as ATTENDEE (required for proper calendar client behaviour).
+  const bodyText = isCancel
+    ? `The AFC Urgent Care game vs. ${opponentName} on ${date} has been cancelled. Your calendar will update automatically within a few hours.`
+    : `The AFC Urgent Care game vs. ${opponentName} has been updated to ${date} at ${startTime}. Your calendar will update automatically within a few hours.`;
+
+  const bodyHtml = isCancel
+    ? `<p>The AFC Urgent Care game vs. <strong>${opponentName}</strong> on <strong>${date}</strong> has been <strong>cancelled</strong>.</p><p>Your calendar will update automatically within a few hours. No action needed.</p>`
+    : `<p>The AFC Urgent Care game vs. <strong>${opponentName}</strong> has been updated to <strong>${date}</strong> at <strong>${startTime}</strong>.</p><p>Your calendar will update automatically within a few hours. No action needed.</p>`;
+
+  const emailHtml = `
+    <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+      <div style="background:#1d5a36;border-radius:16px;padding:24px;color:#fff;text-align:center;">
+        <div style="font-size:13px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;color:#e8a922;margin-bottom:8px;">
+          AFC Urgent Care
+        </div>
+        <div style="font-size:20px;font-weight:800;line-height:1.2;">
+          ${isCancel ? "⚠️ Game Cancelled" : "📅 Schedule Update"}
+        </div>
+      </div>
+      <div style="padding:20px 0;color:#0f3a21;font-size:15px;line-height:1.6;">
+        ${bodyHtml}
+      </div>
+      <p style="font-size:13px;color:#888;text-align:center;">
+        &mdash; Coach Chicolo &amp; AFC Urgent Care
+      </p>
+    </div>
+  `;
+
+  // Send to all subscribers in parallel.
   await Promise.all(
-    subscribers.map((email) => {
-      const content = buildIcs({ event, attendeeEmail: email, method, override, sequence });
-      return sendEmail({
-        to: email,
-        subject,
-        text: isCancel
-          ? `The AFC Urgent Care game vs. ${opponentName} has been cancelled. Your calendar invite will update automatically.`
-          : `The AFC Urgent Care game vs. ${opponentName} has been updated. Your calendar invite will update automatically.`,
-        html: `<p>${isCancel ? "This game has been <strong>cancelled</strong>." : "This game has been <strong>updated</strong>."} Your calendar will update automatically when you open this email.</p>`,
-        attachments: [
-          {
-            filename: `${eventId}.ics`,
-            content,
-            content_type: `text/calendar; method=${method}; charset=utf-8`,
-          },
-        ],
-      });
-    })
+    subscribers.map((email) =>
+      sendEmail({ to: email, subject, text: bodyText, html: emailHtml })
+    )
   );
 }

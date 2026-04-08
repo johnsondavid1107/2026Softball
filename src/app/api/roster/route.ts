@@ -28,6 +28,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Duplicate check — jersey numbers must be unique.
+  // Allow the same id through (that's an edit/update of an existing entry).
+  const current = await getRoster();
+  const conflict = current.find(
+    (p) => p.jerseyNumber === player.jerseyNumber && p.id !== player.id
+  );
+  if (conflict) {
+    return NextResponse.json(
+      {
+        error: "duplicate",
+        message: `Jersey #${player.jerseyNumber} is already taken by ${conflict.firstName}. Each player needs a unique number.`,
+      },
+      { status: 409 }
+    );
+  }
+
   await upsertPlayer(player);
   return NextResponse.json({ ok: true });
 }
