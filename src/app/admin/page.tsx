@@ -9,7 +9,7 @@ import type { Player } from "@/lib/players";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "banner" | "games" | "subscribers" | "roster";
+type Tab = "banner" | "schedule" | "subscribers" | "roster";
 
 type EventOverride = {
   status: "cancelled" | "rescheduled";
@@ -126,7 +126,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     <div>
       {/* Tab bar */}
       <div className="flex border-b border-team-green/10 bg-white px-2">
-        {(["banner", "games", "subscribers", "roster"] as Tab[]).map((t) => (
+        {(["banner", "schedule", "subscribers", "roster"] as Tab[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -145,7 +145,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       <div className="px-4 py-5">
         {tab === "banner" && <BannerTab />}
-        {tab === "games" && <GamesTab />}
+        {tab === "schedule" && <GamesTab />}
         {tab === "subscribers" && <SubscribersTab />}
         {tab === "roster" && <RosterTab />}
       </div>
@@ -266,7 +266,7 @@ function BannerTab() {
 // ─── Games tab ────────────────────────────────────────────────────────────────
 
 function GamesTab() {
-  const games = SCHEDULE.filter((e) => e.kind === "game");
+  const events = SCHEDULE.filter((e) => e.kind === "game" || e.kind === "practice");
   const [overrides, setOverrides] = useState<Record<string, EventOverride>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [editData, setEditData] = useState({ date: "", startTime: "", endTime: "" });
@@ -310,7 +310,7 @@ function GamesTab() {
 
   return (
     <section>
-      <SectionHeading>Game Schedule</SectionHeading>
+      <SectionHeading>Schedule</SectionHeading>
       <label className="mb-3 flex items-center gap-2 text-[13px] text-team-green-dark">
         <input
           type="checkbox"
@@ -322,11 +322,12 @@ function GamesTab() {
       </label>
 
       <ul className="flex flex-col gap-2">
-        {games.map((event) => {
+        {events.map((event) => {
           const ov = overrides[event.id];
           const isBusy = busy === event.id;
           const isEditing = editing === event.id;
           const opponent = event.opponent ? TEAMS[event.opponent] : null;
+          const isPractice = event.kind === "practice";
 
           return (
             <li
@@ -337,16 +338,18 @@ function GamesTab() {
                   ? "border-red-200 bg-red-50"
                   : ov?.status === "rescheduled"
                   ? "border-team-gold/40 bg-team-gold/10"
+                  : isPractice
+                  ? "border-team-yellow/50 bg-team-yellow/5"
                   : "border-team-green/15 bg-white"
               )}
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="text-[11px] font-bold uppercase tracking-wider text-team-green/50">
-                    {event.date} · {event.startTime}
+                    {isPractice ? "Practice · " : "Game · "}{event.date} · {event.startTime}
                   </div>
                   <div className="font-bold text-team-green-dark">
-                    vs. {opponent?.sponsor ?? "TBD"}
+                    {isPractice ? "Team 3 & Team 4" : `vs. ${opponent?.sponsor ?? "TBD"}`}
                   </div>
                   {ov && (
                     <div className={clsx(
