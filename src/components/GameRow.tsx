@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import clsx from "clsx";
 import {
   formatShortDate,
@@ -14,11 +15,19 @@ type Props = {
   event: TeamEvent;
   todayIso: string;
   nowIso: string; // used to detect "past"
+  isNext?: boolean; // true for the first upcoming/today event — scroll target
 };
 
-export function GameRow({ event, todayIso, nowIso }: Props) {
+export function GameRow({ event, todayIso, nowIso, isNext }: Props) {
+  const liRef = useRef<HTMLLIElement>(null);
   const isToday = event.date === todayIso;
   const isPast = event.date < nowIso;
+
+  // On mount, scroll the next upcoming game to just below the sticky nav.
+  useEffect(() => {
+    if (!isNext || !liRef.current) return;
+    liRef.current.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [isNext]);
 
   const base =
     "relative flex items-stretch gap-3 rounded-2xl border px-4 py-3.5 transition-all tap";
@@ -27,8 +36,8 @@ export function GameRow({ event, todayIso, nowIso }: Props) {
     event.kind === "bye"
       ? "border-dashed border-team-green/20 bg-transparent text-team-green/60"
       : event.kind === "practice"
-      ? "border-team-yellow/60 border-l-[6px] bg-team-yellow/10"
-      : "border-team-green/15 bg-white shadow-card";
+        ? "border-team-yellow/60 border-l-[6px] bg-team-yellow/10"
+        : "border-team-green/15 bg-white shadow-card";
 
   const todayStyles = isToday
     ? "ring-2 ring-team-yellow ring-offset-2 ring-offset-team-cream animate-pulse-soft !border-team-green"
@@ -38,7 +47,8 @@ export function GameRow({ event, todayIso, nowIso }: Props) {
 
   return (
     <li
-      className={clsx(base, kindStyles, todayStyles, pastStyles)}
+      ref={liRef}
+      className={clsx(base, kindStyles, todayStyles, pastStyles, isNext && "scroll-mt-28")}
       aria-current={isToday ? "date" : undefined}
     >
       {/* Left: date block */}

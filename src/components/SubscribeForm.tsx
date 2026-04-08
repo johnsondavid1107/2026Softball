@@ -34,7 +34,7 @@ export function SubscribeForm() {
   }
 
   return (
-    <section className="mx-4 mb-8 mt-2 rounded-2xl bg-team-green p-5 text-team-cream shadow-card-lg">
+    <section className="rounded-2xl bg-team-green p-5 text-team-cream shadow-card-lg">
       <div className="text-[10px] font-bold uppercase tracking-wider text-team-gold">
         Get game invites
       </div>
