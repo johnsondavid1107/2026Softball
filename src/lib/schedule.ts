@@ -46,8 +46,12 @@ export type TeamEvent = {
   endTime?: string;
   /** For games: opponent team number. */
   opponent?: TeamNumber;
-  /** Free-form title override. */
+  /** Free-form title override — used for coach-added games (opponent name). */
   title?: string;
+  /** Location override — used for coach-added games. Defaults to LOCATION.name. */
+  location?: string;
+  /** ISO timestamp — present only on coach-added games. Used by NewGameToast. */
+  addedAt?: string;
 };
 
 const GAME_DURATION_MIN = 90;
@@ -165,12 +169,26 @@ export function formatTime(hhmm?: string): string {
   });
 }
 
-export function opponentLabel(e: TeamEvent): string {
-  if (e.kind !== "game" || !e.opponent) return "";
-  const t = TEAMS[e.opponent];
-  return `${t.sponsor}`;
+/** Middle line for game rows: "vs. Team 2 · Toms Titans" or "vs. [free text]". */
+export function opponentMidLine(e: TeamEvent): string {
+  if (e.kind !== "game") return "";
+  if (e.opponent) return `vs. Team ${e.opponent} · ${TEAMS[e.opponent].sponsor}`;
+  return `vs. ${e.title ?? "TBD"}`;
 }
 
+/** Bottom line: location for games/practices, always shown. */
+export function eventLocation(e: TeamEvent): string {
+  return e.location ?? LOCATION.name;
+}
+
+/** @deprecated use opponentMidLine */
+export function opponentLabel(e: TeamEvent): string {
+  if (e.kind !== "game") return "";
+  if (e.opponent) return TEAMS[e.opponent].sponsor;
+  return e.title ?? "TBD";
+}
+
+/** @deprecated use opponentMidLine */
 export function opponentShort(e: TeamEvent): string {
   if (e.kind !== "game" || !e.opponent) return "";
   return `Team ${e.opponent}`;

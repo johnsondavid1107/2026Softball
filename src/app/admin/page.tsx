@@ -265,6 +265,15 @@ function BannerTab() {
 
 // ─── Games tab ────────────────────────────────────────────────────────────────
 
+type AddedGameEntry = {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  opponentName: string;
+  addedAt: string;
+};
+
 function GamesTab() {
   const events = SCHEDULE.filter((e) => e.kind === "game" || e.kind === "practice");
   const [overrides, setOverrides] = useState<Record<string, EventOverride>>({});
@@ -272,6 +281,49 @@ function GamesTab() {
   const [editData, setEditData] = useState({ date: "", startTime: "", endTime: "" });
   const [busy, setBusy] = useState<string | null>(null);
   const [sendEmails, setSendEmails] = useState(true);
+
+  // Added games state
+  const [addedGames, setAddedGames] = useState<AddedGameEntry[]>([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addForm, setAddForm] = useState({ date: "", startTime: "11:00", opponentName: "", location: "Smith School" });
+  const [addBusy, setAddBusy] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/added-games")
+      .then((r) => r.json())
+      .then(setAddedGames)
+      .catch(() => {});
+  }, []);
+
+  async function handleAddGame(e: React.FormEvent) {
+    e.preventDefault();
+    if (!addForm.date || !addForm.startTime || !addForm.opponentName.trim()) return;
+    setAddBusy(true);
+    try {
+      const res = await fetch("/api/admin/add-game", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(addForm),
+      });
+      const json = await res.json() as { ok?: boolean; game?: AddedGameEntry };
+      if (json.ok && json.game) {
+        setAddedGames((prev) => [...prev, json.game!]);
+        setAddForm({ date: "", startTime: "11:00", opponentName: "" });
+        setShowAddForm(false);
+      }
+    } finally {
+      setAddBusy(false);
+    }
+  }
+
+  async function handleRemoveAdded(id: string) {
+    await fetch("/api/admin/add-game", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setAddedGames((prev) => prev.filter((g) => g.id !== id));
+  }
 
   async function doAction(
     eventId: string,
@@ -311,6 +363,110 @@ function GamesTab() {
   return (
     <section>
       <SectionHeading>Schedule</SectionHeading>
+
+      {/* ── Add game ── */}
+      {!showAddForm ? (
+        <button
+          type="button"
+          onClick={() => setShowAddForm(true)}
+          className="tap mb-4 flex w-full items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50 py-3 text-sm font-bold text-blue-700 active:bg-blue-100"
+        >
+          + Add game to schedule
+        </button>
+      ) : (
+        <form onSubmit={handleAddGame} className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <div className="mb-3 text-[12px] font-bold uppercase tracking-wider text-blue-700">
+            New game
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="block">
+              <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-team-green/60">Opponent name</span>
+              <input
+                type="text"
+                placeholder="e.g. Park Ridge All-Stars"
+                value={addForm.opponentName}
+                onChange={(e) => setAddForm((f) => ({ ...f, opponentName: e.target.value }))}
+                className="tap w-full rounded-lg border border-blue-200 bg-white px-3 text-[14px] text-team-green-dark focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-team-green/60">Date</span>
+                <input
+                  type="date"
+                  value={addForm.date}
+                  onChange={(e) => setAddForm((f) => ({ ...f, date: e.target.value }))}
+                  className="tap w-full rounded-lg border border-blue-200 bg-white px-2 text-[13px] text-team-green-dark focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-team-green/60">Start time</span>
+                <input
+                  type="time"
+                  value={addForm.startTime}
+                  onChange={(e) => setAddForm((f) => ({ ...f, startTime: e.target.value }))}
+                  className="tap w-full rounded-lg border border-blue-200 bg-white px-2 text-[13px] text-team-green-dark focus:outline-none"
+                />
+              </label>
+            </div>
+            <label className="block">
+              <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wider text-team-green/60">Location</span>
+              <input
+                type="text"
+                placeholder="Smith School"
+                value={addForm.location}
+                onChange={(e) => setAddForm((f) => ({ ...f, location: e.target.value }))}
+                className="tap w-full rounded-lg border border-blue-200 bg-white px-3 text-[14px] text-team-green-dark focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAddForm(false)}
+              className="tap flex-1 rounded-xl border border-team-green/20 py-2.5 text-[12px] font-semibold text-team-green-dark"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={addBusy || !addForm.date || !addForm.opponentName.trim()}
+              className="tap flex-[2] rounded-xl bg-blue-600 py-2.5 text-[12px] font-bold text-white disabled:opacity-50 active:bg-blue-700"
+            >
+              {addBusy ? "Adding…" : "Add to schedule"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Added games list */}
+      {addedGames.length > 0 && (
+        <div className="mb-4">
+          <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-600">
+            Coach-added games
+          </div>
+          <ul className="flex flex-col gap-2">
+            {addedGames.map((g) => (
+              <li key={g.id} className="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-blue-500">
+                    {g.date} · {g.startTime}
+                  </div>
+                  <div className="font-bold text-team-green-dark">vs. {g.opponentName}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveAdded(g.id)}
+                  className="tap text-[11px] font-semibold text-red-500 active:text-red-700"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <label className="mb-3 flex items-center gap-2 text-[13px] text-team-green-dark">
         <input
           type="checkbox"

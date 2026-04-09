@@ -5,8 +5,8 @@ import clsx from "clsx";
 import {
   formatShortDate,
   formatTime,
-  opponentLabel,
-  opponentShort,
+  opponentMidLine,
+  eventLocation,
   type TeamEvent,
 } from "@/lib/schedule";
 import { WeatherChip } from "./WeatherChip";
@@ -56,10 +56,11 @@ export function GameRow({ event, todayIso, nowIso, isNext }: Props) {
         <DateBlock iso={event.date} />
       </div>
 
-      {/* Middle: main content */}
+      {/* Middle: consistent 3-line layout for game/practice; 2-line for bye */}
       <div className="flex min-w-0 flex-1 flex-col justify-center">
         {event.kind === "game" && (
           <>
+            {/* Line 1: kind label + home badge */}
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-bold uppercase tracking-wider text-team-green-dark">
                 Game
@@ -68,25 +69,30 @@ export function GameRow({ event, todayIso, nowIso, isNext }: Props) {
                 Home
               </span>
             </div>
+            {/* Line 2: "vs. Team X · Sponsor" or "vs. [free text]" */}
             <div className="mt-0.5 truncate text-[15px] font-bold leading-tight text-team-green-dark">
-              vs. {opponentLabel(event)}
+              {opponentMidLine(event)}
             </div>
+            {/* Line 3: location — always shown */}
             <div className="text-[12px] text-team-green/60">
-              {opponentShort(event)}
+              {eventLocation(event)}
             </div>
           </>
         )}
 
         {event.kind === "practice" && (
           <>
+            {/* Line 1: kind label */}
             <div className="text-[10px] font-bold uppercase tracking-wider text-team-yellow-dark">
               Practice
             </div>
+            {/* Line 2: participants */}
             <div className="mt-0.5 text-[15px] font-bold leading-tight text-team-green-dark">
               Team 3 & Team 4
             </div>
+            {/* Line 3: location — always shown */}
             <div className="text-[12px] text-team-green/60">
-              Smith School
+              {eventLocation(event)}
             </div>
           </>
         )}

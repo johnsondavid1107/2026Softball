@@ -36,6 +36,7 @@ const KEYS = {
   subscribers: "subscribers",
   banner: "banner",
   roster: "roster",
+  addedGames: "added-games",
   eventOverride: (id: string) => `event:${id}`,
   eventSeq: (id: string) => `event:${id}:seq`,
 } as const;
@@ -140,6 +141,35 @@ async function bumpEventSeq(eventId: string): Promise<number> {
 export async function getEventSeq(eventId: string): Promise<number> {
   const val = await redis.get<number>(KEYS.eventSeq(eventId));
   return val ?? 0;
+}
+
+// ─── Added games (coach-added makeup / extra games) ──────────────────────────
+
+export type AddedGame = {
+  /** Stable ID: "added-{timestamp}" */
+  id: string;
+  date: string;        // YYYY-MM-DD
+  startTime: string;   // HH:MM 24h
+  endTime: string;     // HH:MM 24h
+  opponentName: string;
+  location?: string;   // Defaults to "Smith School" if omitted
+  /** ISO timestamp of when the coach added it — used by the new-game toast. */
+  addedAt: string;
+};
+
+export async function getAddedGames(): Promise<AddedGame[]> {
+  const raw = await redis.get<AddedGame[]>(KEYS.addedGames);
+  return raw ?? [];
+}
+
+export async function saveAddedGame(game: AddedGame): Promise<void> {
+  const current = await getAddedGames();
+  await redis.set(KEYS.addedGames, [...current, game]);
+}
+
+export async function deleteAddedGame(id: string): Promise<void> {
+  const current = await getAddedGames();
+  await redis.set(KEYS.addedGames, current.filter((g) => g.id !== id));
 }
 
 // ─── Roster (coach-managed, shared) ──────────────────────────────────────────
