@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { SCHEDULE, TEAMS } from "@/lib/schedule";
+import { CalendarLinkCard } from "@/components/CalendarLinks";
 import { AddPlayerForm } from "@/components/AddPlayerForm";
 import { AudioProvider } from "@/components/AudioProvider";
 import type { Player } from "@/lib/players";
@@ -620,6 +621,7 @@ function SubscribersTab() {
           ({subscribers.length})
         </span>
       </SectionHeading>
+      <CalendarLinkCard />
       {loading ? (
         <p className="text-[13px] text-team-green/50">Loading…</p>
       ) : subscribers.length === 0 ? (

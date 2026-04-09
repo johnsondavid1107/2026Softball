@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import clsx from "clsx";
+import { CalendarLinks } from "./CalendarLinks";
 
 type Status = "idle" | "submitting" | "success" | "already" | "error";
 
@@ -94,20 +95,18 @@ export function SubscribeForm() {
           <div className="overflow-hidden">
             <div className="px-5 pb-5">
               <p className="text-[13px] text-team-cream/80">
-                Enter your email and we&rsquo;ll send you a subscribe link. One tap adds
-                all games with 1-hour reminders. Cancellations and reschedules sync on
-                their own — no app, no sign-in.
+                Enter your email and tap the calendar link. One tap adds all games
+                with 1-hour reminders — updates sync automatically.
               </p>
 
-              {status === "success" && (
-                <div role="status" className="mt-4 rounded-xl bg-team-gold px-4 py-3 text-center text-sm font-semibold text-team-green-dark">
-                  ✓ Check your email for the calendar link.
-                </div>
-              )}
-
-              {status === "already" && (
-                <div role="status" className="mt-4 rounded-xl bg-team-gold/30 px-4 py-3 text-center text-sm text-team-cream">
-                  You&rsquo;re already subscribed — check your inbox for the calendar link.
+              {(status === "success" || status === "already") && (
+                <div role="status" className="mt-2">
+                  <p className="mb-1 text-center text-[13px] font-semibold text-team-gold">
+                    {status === "success"
+                      ? "✓ You're in! Add the schedule to your calendar:"
+                      : "Already subscribed — tap below to add the schedule:"}
+                  </p>
+                  <CalendarLinks />
                 </div>
               )}
 
@@ -132,7 +131,7 @@ export function SubscribeForm() {
                       status === "submitting" && "opacity-60"
                     )}
                   >
-                    {status === "submitting" ? "Sending…" : "Send me invites"}
+                    {status === "submitting" ? "Saving…" : "Get calendar link"}
                   </button>
                   {error && <div role="alert" className="text-[12px] text-team-gold-light">{error}</div>}
                 </form>
