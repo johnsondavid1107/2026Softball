@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { SCHEDULE } from "@/lib/schedule";
+import { SCHEDULE, TEAMS } from "@/lib/schedule";
 import { AddPlayerForm } from "@/components/AddPlayerForm";
 import { AudioProvider } from "@/components/AudioProvider";
 import type { Player } from "@/lib/players";
@@ -308,7 +308,7 @@ function GamesTab() {
       const json = await res.json() as { ok?: boolean; game?: AddedGameEntry };
       if (json.ok && json.game) {
         setAddedGames((prev) => [...prev, json.game!]);
-        setAddForm({ date: "", startTime: "11:00", opponentName: "" });
+        setAddForm({ date: "", startTime: "11:00", opponentName: "", location: "Smith School" });
         setShowAddForm(false);
       }
     } finally {
@@ -357,8 +357,6 @@ function GamesTab() {
       setBusy(null);
     }
   }
-
-  const { TEAMS } = require("@/lib/schedule");
 
   return (
     <section>
