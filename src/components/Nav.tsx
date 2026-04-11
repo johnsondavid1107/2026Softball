@@ -52,14 +52,6 @@ export function Nav() {
           <span className="text-base font-bold leading-tight">{time}</span>
         </div>
       </div>
-      <nav className="flex border-t border-team-green-dark/40">
-        <NavTab href="/" label="Schedule" active={pathname === "/"} />
-        <NavTab
-          href="/roster"
-          label="Roster"
-          active={pathname?.startsWith("/roster") ?? false}
-        />
-      </nav>
     </header>
   );
 }

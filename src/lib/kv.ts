@@ -37,6 +37,7 @@ const KEYS = {
   banner: "banner",
   roster: "roster",
   addedGames: "added-games",
+  lineupLogs: "lineup-logs",
   eventOverride: (id: string) => `event:${id}`,
   eventSeq: (id: string) => `event:${id}:seq`,
 } as const;
@@ -197,4 +198,30 @@ export async function upsertPlayer(player: Player): Promise<void> {
 export async function deletePlayer(id: string): Promise<void> {
   const roster = await getRoster();
   await setRoster(roster.filter((p) => p.id !== id));
+}
+
+// ─── Lineup logs ──────────────────────────────────────────────────────────────
+
+export type LineupEntry = {
+  batPosition: number;
+  playerId: string;
+  playerName: string;
+  fieldPosition: string;
+};
+
+export type LineupLog = {
+  id: string;
+  loggedAt: string; // ISO
+  entries: LineupEntry[];
+};
+
+export async function getLineupLogs(): Promise<LineupLog[]> {
+  const raw = await redis.get<LineupLog[]>(KEYS.lineupLogs);
+  return raw ?? [];
+}
+
+export async function saveLineupLog(log: LineupLog): Promise<void> {
+  const current = await getLineupLogs();
+  // Newest first; cap at 50 to keep storage lean
+  await redis.set(KEYS.lineupLogs, [log, ...current].slice(0, 50));
 }
