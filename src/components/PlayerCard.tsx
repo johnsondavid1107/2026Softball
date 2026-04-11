@@ -18,8 +18,6 @@ export function PlayerCard({ player, editable, onEdit, onRemove }: Props) {
   const song = player.song;
   const hasPreview = !!song?.previewUrl;
 
-  const initial = player.firstName.charAt(0).toUpperCase();
-
   return (
     <li className="flex items-center gap-3 rounded-2xl border border-team-green/15 bg-white px-4 py-3 shadow-card">
       {/* Jersey number badge — rectangular tag with # prefix so it's never
@@ -36,10 +34,10 @@ export function PlayerCard({ player, editable, onEdit, onRemove }: Props) {
         </span>
       </div>
 
-      {/* Initial + song */}
+      {/* Name + song */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="text-lg font-black tracking-tight text-team-green-dark">
-          {initial}.
+          {player.firstName}
         </div>
         {song ? (
           <div className="mt-0.5 flex items-center gap-2">

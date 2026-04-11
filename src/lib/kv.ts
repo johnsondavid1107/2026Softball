@@ -225,3 +225,7 @@ export async function saveLineupLog(log: LineupLog): Promise<void> {
   // Newest first; cap at 50 to keep storage lean
   await redis.set(KEYS.lineupLogs, [log, ...current].slice(0, 50));
 }
+
+export async function clearLineupLogs(): Promise<void> {
+  await redis.del(KEYS.lineupLogs);
+}

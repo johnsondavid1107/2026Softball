@@ -30,6 +30,7 @@ export function Nav() {
   }, []);
 
   const { date, time } = formatClock(now);
+  const isAdmin = pathname?.startsWith("/admin") ?? false;
 
   return (
     <header className="safe-top sticky top-0 z-40 bg-team-green text-team-cream shadow-card">
@@ -52,6 +53,21 @@ export function Nav() {
           <span className="text-base font-bold leading-tight">{time}</span>
         </div>
       </div>
+      {!isAdmin && (
+        <nav className="flex border-t border-team-green-dark/40">
+          <NavTab href="/" label="Schedule" active={pathname === "/"} />
+          <NavTab
+            href="/history"
+            label="History"
+            active={pathname?.startsWith("/history") ?? false}
+          />
+          <NavTab
+            href="/roster"
+            label="Roster"
+            active={pathname?.startsWith("/roster") ?? false}
+          />
+        </nav>
+      )}
     </header>
   );
 }

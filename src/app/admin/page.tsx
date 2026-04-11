@@ -10,7 +10,7 @@ import type { Player } from "@/lib/players";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "banner" | "schedule" | "subscribers" | "roster" | "lineup" | "history";
+type Tab = "banner" | "subscribers" | "lineup" | "roster" | "history";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -133,6 +133,11 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("banner");
 
+  // Lineup state lives here so it survives tab switches
+  const [lineupPlayers, setLineupPlayers] = useState<Player[]>([]);
+  const [lineupAbsentIds, setLineupAbsentIds] = useState<Set<string>>(new Set());
+  const [lineupLoaded, setLineupLoaded] = useState(false);
+
   async function logout() {
     await fetch("/api/admin/logout", { method: "POST" });
     onLogout();
@@ -142,7 +147,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     <div>
       {/* Tab bar — scrollable so all 6 tabs fit on narrow screens */}
       <div className="flex overflow-x-auto border-b border-team-green/10 bg-white scrollbar-none">
-        {(["banner", "schedule", "subscribers", "roster", "lineup", "history"] as Tab[]).map((t) => (
+        {(["banner", "subscribers", "lineup", "roster", "history"] as Tab[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -161,10 +166,18 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       <div className="px-4 py-5">
         {tab === "banner" && <BannerTab />}
-        {tab === "schedule" && <GamesTab />}
         {tab === "subscribers" && <SubscribersTab />}
         {tab === "roster" && <RosterTab />}
-        {tab === "lineup" && <LineupTab />}
+        {tab === "lineup" && (
+          <LineupTab
+            players={lineupPlayers}
+            setPlayers={setLineupPlayers}
+            absentIds={lineupAbsentIds}
+            setAbsentIds={setLineupAbsentIds}
+            loaded={lineupLoaded}
+            setLoaded={setLineupLoaded}
+          />
+        )}
         {tab === "history" && <HistoryTab />}
       </div>
 
@@ -198,7 +211,7 @@ function BannerTab() {
           setMessage(d.message);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   async function publish() {
@@ -310,7 +323,7 @@ function GamesTab() {
     fetch("/api/added-games")
       .then((r) => r.json())
       .then(setAddedGames)
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   async function handleAddGame(e: React.FormEvent) {
@@ -509,10 +522,10 @@ function GamesTab() {
                 ov?.status === "cancelled"
                   ? "border-red-200 bg-red-50"
                   : ov?.status === "rescheduled"
-                  ? "border-team-gold/40 bg-team-gold/10"
-                  : isPractice
-                  ? "border-team-yellow/50 bg-team-yellow/5"
-                  : "border-team-green/15 bg-white"
+                    ? "border-team-gold/40 bg-team-gold/10"
+                    : isPractice
+                      ? "border-team-yellow/50 bg-team-yellow/5"
+                      : "border-team-green/15 bg-white"
               )}
             >
               <div className="flex items-start justify-between gap-2">
@@ -617,7 +630,7 @@ function SubscribersTab() {
     fetch("/api/admin/subscribers")
       .then((r) => r.json())
       .then(setSubscribers)
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
 
@@ -790,34 +803,46 @@ const FIELD_POSITIONS = [
   "3rd Base",
   "Pitcher 1",
   "Pitcher 2",
-  "Catcher",
+  "Shortstop",
   "Outfield 1st",
   "Outfield 2nd",
   "Outfield 3rd",
 ];
 
-function LineupTab() {
-  const [players, setPlayers] = useState<Player[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [absentIds, setAbsentIds] = useState<Set<string>>(new Set());
+type LineupTabProps = {
+  players: Player[];
+  setPlayers: React.Dispatch<React.SetStateAction<Player[]>>;
+  absentIds: Set<string>;
+  setAbsentIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  loaded: boolean;
+  setLoaded: React.Dispatch<React.SetStateAction<boolean>>;
+};
+
+function LineupTab({ players, setPlayers, absentIds, setAbsentIds, loaded, setLoaded }: LineupTabProps) {
+  const [fetching, setFetching] = useState(false);
   const [absentOpen, setAbsentOpen] = useState(false);
   const [logBusy, setLogBusy] = useState(false);
   const [logStatus, setLogStatus] = useState<string | null>(null);
 
   async function fetchRoster() {
-    setLoading(true);
+    setFetching(true);
     try {
       const r = await fetch("/api/roster");
       if (r.ok) {
         const data = (await r.json()) as Player[];
         setPlayers([...data].sort((a, b) => a.jerseyNumber - b.jerseyNumber));
+        setLoaded(true);
       }
     } finally {
-      setLoading(false);
+      setFetching(false);
     }
   }
 
-  useEffect(() => { fetchRoster(); }, []);
+  // Only fetch on first visit — Refresh button re-fetches explicitly
+  useEffect(() => {
+    if (!loaded) fetchRoster();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Rotate last player to first — operates on full list (including absent)
   function shift() {
@@ -906,7 +931,7 @@ function LineupTab() {
         <p className="mb-3 text-[12px] text-team-green/60">{logStatus}</p>
       )}
 
-      {loading ? (
+      {!loaded || fetching ? (
         <div className="h-48 animate-pulse rounded-2xl bg-team-green/10" />
       ) : players.length === 0 ? (
         <p className="text-[13px] text-team-green/50">
@@ -1016,18 +1041,61 @@ function LineupTab() {
 function HistoryTab() {
   const [logs, setLogs] = useState<LineupLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirming, setConfirming] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/lineup")
       .then((r) => r.json())
       .then(setLogs)
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
 
+  async function clearHistory() {
+    setClearing(true);
+    try {
+      await fetch("/api/admin/lineup", { method: "DELETE" });
+      setLogs([]);
+      setConfirming(false);
+    } finally {
+      setClearing(false);
+    }
+  }
+
   return (
     <section>
-      <SectionHeading>Lineup History</SectionHeading>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-base font-bold text-team-green-dark">Lineup History</h2>
+        {logs.length > 0 && !confirming && (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="tap text-[12px] font-semibold text-red-500 active:text-red-700"
+          >
+            Clear all
+          </button>
+        )}
+        {confirming && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="tap text-[12px] font-semibold text-team-green/60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={clearHistory}
+              disabled={clearing}
+              className="tap rounded-lg bg-red-500 px-3 py-1.5 text-[12px] font-bold text-white disabled:opacity-50 active:bg-red-600"
+            >
+              {clearing ? "Clearing…" : "Yes, clear"}
+            </button>
+          </div>
+        )}
+      </div>
       {loading ? (
         <p className="text-[13px] text-team-green/50">Loading…</p>
       ) : logs.length === 0 ? (
