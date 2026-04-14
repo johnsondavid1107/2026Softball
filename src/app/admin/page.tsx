@@ -10,7 +10,7 @@ import type { Player } from "@/lib/players";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "banner" | "subscribers" | "lineup" | "roster" | "history";
+type Tab = "banner" | "schedule" | "subscribers" | "lineup" | "roster" | "history";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -147,7 +147,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     <div>
       {/* Tab bar — scrollable so all 6 tabs fit on narrow screens */}
       <div className="flex overflow-x-auto border-b border-team-green/10 bg-white scrollbar-none">
-        {(["banner", "subscribers", "lineup", "roster", "history"] as Tab[]).map((t) => (
+        {(["banner", "schedule", "subscribers", "lineup", "roster", "history"] as Tab[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -166,6 +166,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       <div className="px-4 py-5">
         {tab === "banner" && <BannerTab />}
+        {tab === "schedule" && <GamesTab />}
         {tab === "subscribers" && <SubscribersTab />}
         {tab === "roster" && <RosterTab />}
         {tab === "lineup" && (
@@ -818,19 +819,57 @@ type LineupTabProps = {
   setLoaded: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
+const LINEUP_LS_KEY = "afc-lineup-order";
+
+/** Read saved player-ID order from localStorage. Returns null if nothing saved. */
+function loadStoredOrder(): string[] | null {
+  try {
+    const raw = localStorage.getItem(LINEUP_LS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as string[];
+  } catch {
+    return null;
+  }
+}
+
+/** Persist current player-ID order to localStorage. */
+function saveOrderToStorage(players: Player[]) {
+  try {
+    localStorage.setItem(LINEUP_LS_KEY, JSON.stringify(players.map((p) => p.id)));
+  } catch {}
+}
+
+/**
+ * Apply a saved ID order to a freshly fetched player list.
+ * - Players in the saved order appear first (in that order).
+ * - Any new players not in the saved order are appended sorted by jersey number.
+ */
+function applyStoredOrder(fetched: Player[], savedIds: string[]): Player[] {
+  const byId = Object.fromEntries(fetched.map((p) => [p.id, p]));
+  const ordered = savedIds.filter((id) => byId[id]).map((id) => byId[id]);
+  const savedSet = new Set(savedIds);
+  const newPlayers = fetched
+    .filter((p) => !savedSet.has(p.id))
+    .sort((a, b) => a.jerseyNumber - b.jerseyNumber);
+  return [...ordered, ...newPlayers];
+}
+
 function LineupTab({ players, setPlayers, absentIds, setAbsentIds, loaded, setLoaded }: LineupTabProps) {
   const [fetching, setFetching] = useState(false);
   const [absentOpen, setAbsentOpen] = useState(false);
   const [logBusy, setLogBusy] = useState(false);
   const [logStatus, setLogStatus] = useState<string | null>(null);
 
+  /** Initial load — honours localStorage order; new players appended in jersey order. */
   async function fetchRoster() {
     setFetching(true);
     try {
       const r = await fetch("/api/roster");
       if (r.ok) {
         const data = (await r.json()) as Player[];
-        setPlayers([...data].sort((a, b) => a.jerseyNumber - b.jerseyNumber));
+        const savedIds = loadStoredOrder();
+        const ordered = savedIds ? applyStoredOrder(data, savedIds) : [...data].sort((a, b) => a.jerseyNumber - b.jerseyNumber);
+        setPlayers(ordered);
         setLoaded(true);
       }
     } finally {
@@ -838,17 +877,36 @@ function LineupTab({ players, setPlayers, absentIds, setAbsentIds, loaded, setLo
     }
   }
 
-  // Only fetch on first visit — Refresh button re-fetches explicitly
+  /** Refresh — resets to jersey-number order and clears any saved order. */
+  async function refreshRoster() {
+    setFetching(true);
+    try {
+      const r = await fetch("/api/roster");
+      if (r.ok) {
+        const data = (await r.json()) as Player[];
+        const ordered = [...data].sort((a, b) => a.jerseyNumber - b.jerseyNumber);
+        setPlayers(ordered);
+        saveOrderToStorage(ordered);
+        setLoaded(true);
+      }
+    } finally {
+      setFetching(false);
+    }
+  }
+
+  // Only fetch on first visit — Refresh button calls refreshRoster() explicitly
   useEffect(() => {
     if (!loaded) fetchRoster();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Rotate last player to first — operates on full list (including absent)
+  // Rotate last player to first — saves new order to localStorage immediately
   function shift() {
     setPlayers((prev) => {
       if (prev.length < 2) return prev;
-      return [prev[prev.length - 1], ...prev.slice(0, -1)];
+      const next = [prev[prev.length - 1], ...prev.slice(0, -1)];
+      saveOrderToStorage(next);
+      return next;
     });
     setLogStatus(null);
   }
@@ -913,7 +971,7 @@ function LineupTab({ players, setPlayers, absentIds, setAbsentIds, loaded, setLo
         </button>
         <button
           type="button"
-          onClick={fetchRoster}
+          onClick={refreshRoster}
           className="tap rounded-xl border border-team-green/20 px-4 py-2.5 text-sm font-semibold text-team-green-dark active:bg-team-cream"
         >
           Refresh
