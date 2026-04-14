@@ -321,6 +321,13 @@ function GamesTab() {
   const [addBusy, setAddBusy] = useState(false);
 
   useEffect(() => {
+    fetch("/api/overrides")
+      .then((r) => r.json())
+      .then(setOverrides)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     fetch("/api/added-games")
       .then((r) => r.json())
       .then(setAddedGames)
@@ -532,7 +539,7 @@ function GamesTab() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="text-[11px] font-bold uppercase tracking-wider text-team-green/50">
-                    {isPractice ? "Practice · " : "Game · "}{event.date} · {event.startTime}
+                    {isPractice ? "Practice · " : "Game · "}{ov?.newDate ?? event.date} · {ov?.newStartTime ?? event.startTime}
                   </div>
                   <div className="font-bold text-team-green-dark">
                     {isPractice ? "Team 3 & Team 4" : `vs. ${opponent?.sponsor ?? "TBD"}`}

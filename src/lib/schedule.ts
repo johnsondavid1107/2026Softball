@@ -52,6 +52,10 @@ export type TeamEvent = {
   location?: string;
   /** ISO timestamp — present only on coach-added games. Used by NewGameToast. */
   addedAt?: string;
+  /** Set when an admin override marks this event cancelled. */
+  cancelled?: boolean;
+  /** Set when an admin override moves this event to a new date/time. */
+  rescheduled?: boolean;
 };
 
 const GAME_DURATION_MIN = 90;

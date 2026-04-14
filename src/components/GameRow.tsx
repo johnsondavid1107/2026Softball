@@ -33,11 +33,15 @@ export function GameRow({ event, todayIso, nowIso, isNext }: Props) {
     "relative flex items-stretch gap-3 rounded-2xl border px-4 py-3.5 transition-all tap";
 
   const kindStyles =
-    event.kind === "bye"
-      ? "border-dashed border-team-green/20 bg-transparent text-team-green/60"
-      : event.kind === "practice"
-        ? "border-team-yellow/60 border-l-[6px] bg-team-yellow/10"
-        : "border-team-green/15 bg-white shadow-card";
+    event.cancelled
+      ? "border-red-200 bg-red-50"
+      : event.rescheduled
+        ? "border-team-gold/40 bg-team-gold/10"
+        : event.kind === "bye"
+          ? "border-dashed border-team-green/20 bg-transparent text-team-green/60"
+          : event.kind === "practice"
+            ? "border-team-yellow/60 border-l-[6px] bg-team-yellow/10"
+            : "border-team-green/15 bg-white shadow-card";
 
   const todayStyles = isToday
     ? "ring-2 ring-team-yellow ring-offset-2 ring-offset-team-cream animate-pulse-soft !border-team-green"
@@ -60,17 +64,35 @@ export function GameRow({ event, todayIso, nowIso, isNext }: Props) {
       <div className="flex min-w-0 flex-1 flex-col justify-center">
         {event.kind === "game" && (
           <>
-            {/* Line 1: kind label + home badge */}
+            {/* Line 1: kind label + status badges */}
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-team-green-dark">
+              <span className={clsx(
+                "text-[10px] font-bold uppercase tracking-wider",
+                event.cancelled ? "text-red-600" : "text-team-green-dark"
+              )}>
                 Game
               </span>
-              <span className="rounded-full bg-team-green px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-team-yellow">
-                Home
-              </span>
+              {!event.cancelled && !event.rescheduled && (
+                <span className="rounded-full bg-team-green px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-team-yellow">
+                  Home
+                </span>
+              )}
+              {event.rescheduled && (
+                <span className="rounded-full bg-team-gold px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-team-green-dark">
+                  Rescheduled
+                </span>
+              )}
+              {event.cancelled && (
+                <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                  Cancelled
+                </span>
+              )}
             </div>
             {/* Line 2: "vs. Team X · Sponsor" or "vs. [free text]" */}
-            <div className="mt-0.5 truncate text-[15px] font-bold leading-tight text-team-green-dark">
+            <div className={clsx(
+              "mt-0.5 truncate text-[15px] font-bold leading-tight",
+              event.cancelled ? "text-red-400 line-through" : "text-team-green-dark"
+            )}>
               {opponentMidLine(event)}
             </div>
             {/* Line 3: location — always shown */}

@@ -125,7 +125,7 @@ export async function getAllEventOverrides(): Promise<
 > {
   const { SCHEDULE } = await import("./schedule");
   const entries = await Promise.all(
-    SCHEDULE.filter((e) => e.kind === "game").map(async (e) => {
+    SCHEDULE.filter((e) => e.kind === "game" || e.kind === "practice").map(async (e) => {
       const ov = await getEventOverride(e.id);
       return ov ? ([e.id, ov] as [string, EventOverride]) : null;
     })

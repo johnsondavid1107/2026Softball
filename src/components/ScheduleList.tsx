@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SCHEDULE, isoDate, type TeamEvent } from "@/lib/schedule";
-import type { AddedGame } from "@/lib/kv";
+import type { AddedGame, EventOverride } from "@/lib/kv";
 import { GameRow } from "./GameRow";
 import { WeatherProvider } from "./WeatherProvider";
 
@@ -20,11 +20,24 @@ function toTeamEvent(g: AddedGame): TeamEvent {
   };
 }
 
+/** Apply an admin override to a static schedule event. */
+function applyOverride(event: TeamEvent, ov: EventOverride): TeamEvent {
+  return {
+    ...event,
+    date: ov.newDate ?? event.date,
+    startTime: ov.newStartTime ?? event.startTime,
+    endTime: ov.newEndTime ?? event.endTime,
+    cancelled: ov.status === "cancelled",
+    rescheduled: ov.status === "rescheduled",
+  };
+}
+
 export function ScheduleList() {
   // Tick once per minute; enough to flip "today"/past styling without
   // re-rendering on every second (the nav handles the live clock).
   const [todayIso, setTodayIso] = useState(() => isoDate(new Date()));
   const [addedEvents, setAddedEvents] = useState<TeamEvent[]>([]);
+  const [overrides, setOverrides] = useState<Record<string, EventOverride>>({});
 
   useEffect(() => {
     const tick = () => setTodayIso(isoDate(new Date()));
@@ -40,8 +53,21 @@ export function ScheduleList() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch("/api/overrides")
+      .then((r) => r.json())
+      .then((data: Record<string, EventOverride>) => setOverrides(data))
+      .catch(() => {});
+  }, []);
+
+  // Apply overrides to static events, then merge with coach-added games.
+  const staticEvents = SCHEDULE.map((event) => {
+    const ov = overrides[event.id];
+    return ov ? applyOverride(event, ov) : event;
+  });
+
   // Merge static schedule with coach-added games, sorted by date then time.
-  const allEvents = [...SCHEDULE, ...addedEvents].sort((a, b) => {
+  const allEvents = [...staticEvents, ...addedEvents].sort((a, b) => {
     const byDate = a.date.localeCompare(b.date);
     if (byDate !== 0) return byDate;
     return (a.startTime ?? "").localeCompare(b.startTime ?? "");
