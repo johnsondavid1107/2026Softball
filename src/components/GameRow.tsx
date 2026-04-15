@@ -104,12 +104,30 @@ export function GameRow({ event, todayIso, nowIso, isNext }: Props) {
 
         {event.kind === "practice" && (
           <>
-            {/* Line 1: kind label */}
-            <div className="text-[10px] font-bold uppercase tracking-wider text-team-yellow-dark">
-              Practice
+            {/* Line 1: kind label + status badges */}
+            <div className="flex items-center gap-1.5">
+              <span className={clsx(
+                "text-[10px] font-bold uppercase tracking-wider",
+                event.cancelled ? "text-red-600" : "text-team-yellow-dark"
+              )}>
+                Practice
+              </span>
+              {event.rescheduled && (
+                <span className="rounded-full bg-team-gold px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-team-green-dark">
+                  Rescheduled
+                </span>
+              )}
+              {event.cancelled && (
+                <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                  Cancelled
+                </span>
+              )}
             </div>
             {/* Line 2: participants */}
-            <div className="mt-0.5 text-[15px] font-bold leading-tight text-team-green-dark">
+            <div className={clsx(
+              "mt-0.5 text-[15px] font-bold leading-tight",
+              event.cancelled ? "text-red-400 line-through" : "text-team-green-dark"
+            )}>
               Team 3 & Team 4
             </div>
             {/* Line 3: location — always shown */}
