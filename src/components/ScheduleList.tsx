@@ -17,6 +17,7 @@ function toTeamEvent(g: AddedGame): TeamEvent {
     title: g.opponentName,
     location: g.location,
     addedAt: g.addedAt,
+    isHome: g.isHome,
   };
 }
 

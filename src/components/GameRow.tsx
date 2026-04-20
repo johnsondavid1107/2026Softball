@@ -72,13 +72,17 @@ export function GameRow({ event, todayIso, nowIso, isNext }: Props) {
               )}>
                 Game
               </span>
-              {!event.cancelled && !event.rescheduled && (
+              {!event.cancelled && !event.rescheduled && event.isHome === false ? (
+                <span className="rounded-full bg-team-yellow px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-team-green-dark">
+                  Away
+                </span>
+              ) : !event.cancelled && !event.rescheduled && event.isHome !== undefined ? (
                 <span className="rounded-full bg-team-green px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-team-yellow">
                   Home
                 </span>
-              )}
+              ) : null}
               {event.rescheduled && (
-                <span className="rounded-full bg-team-gold px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-team-green-dark">
+                <span className="rounded-full bg-team-green px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-team-yellow">
                   Rescheduled
                 </span>
               )}

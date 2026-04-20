@@ -304,6 +304,7 @@ type AddedGameEntry = {
   endTime: string;
   opponentName: string;
   addedAt: string;
+  isHome?: boolean;
 };
 
 function GamesTab() {
@@ -317,7 +318,7 @@ function GamesTab() {
   // Added games state
   const [addedGames, setAddedGames] = useState<AddedGameEntry[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addForm, setAddForm] = useState({ date: "", startTime: "11:00", opponentName: "", location: "Smith School" });
+  const [addForm, setAddForm] = useState({ date: "", startTime: "11:00", opponentName: "", location: "Smith School", isHome: true });
   const [addBusy, setAddBusy] = useState(false);
 
   useEffect(() => {
@@ -347,7 +348,7 @@ function GamesTab() {
       const json = await res.json() as { ok?: boolean; game?: AddedGameEntry };
       if (json.ok && json.game) {
         setAddedGames((prev) => [...prev, json.game!]);
-        setAddForm({ date: "", startTime: "11:00", opponentName: "", location: "Smith School" });
+        setAddForm({ date: "", startTime: "11:00", opponentName: "", location: "Smith School", isHome: true });
         setShowAddForm(false);
       }
     } finally {
@@ -456,6 +457,35 @@ function GamesTab() {
                 className="tap w-full rounded-lg border border-blue-200 bg-white px-3 text-[14px] text-team-green-dark focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
             </label>
+            <div>
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-team-green/60">Home / Away</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAddForm((f) => ({ ...f, isHome: true }))}
+                  className={clsx(
+                    "tap flex-1 rounded-lg border py-2 text-[12px] font-bold transition-colors",
+                    addForm.isHome
+                      ? "border-team-green bg-team-green text-team-yellow"
+                      : "border-blue-200 bg-white text-team-green/50"
+                  )}
+                >
+                  Home
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddForm((f) => ({ ...f, isHome: false }))}
+                  className={clsx(
+                    "tap flex-1 rounded-lg border py-2 text-[12px] font-bold transition-colors",
+                    !addForm.isHome
+                      ? "border-team-yellow bg-team-yellow text-team-green-dark"
+                      : "border-blue-200 bg-white text-team-green/50"
+                  )}
+                >
+                  Away
+                </button>
+              </div>
+            </div>
           </div>
           <div className="mt-3 flex gap-2">
             <button

@@ -156,6 +156,8 @@ export type AddedGame = {
   location?: string;   // Defaults to "Smith School" if omitted
   /** ISO timestamp of when the coach added it — used by the new-game toast. */
   addedAt: string;
+  /** True = Home game, false = Away game. Defaults to true if omitted. */
+  isHome?: boolean;
 };
 
 export async function getAddedGames(): Promise<AddedGame[]> {

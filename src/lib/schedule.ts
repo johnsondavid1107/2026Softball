@@ -52,6 +52,8 @@ export type TeamEvent = {
   location?: string;
   /** ISO timestamp — present only on coach-added games. Used by NewGameToast. */
   addedAt?: string;
+  /** True = Home, false = Away. Only set on coach-added games. */
+  isHome?: boolean;
   /** Set when an admin override marks this event cancelled. */
   cancelled?: boolean;
   /** Set when an admin override moves this event to a new date/time. */
@@ -118,13 +120,13 @@ export const SCHEDULE: TeamEvent[] = [
   // Games — Saturdays
   game("2026-04-11", "11:00", 2), // 2 vs 3
   game("2026-04-18", "13:00", 5), // 5 vs 3
-  game("2026-04-25", "13:00", 1), // 1 vs 3
-  game("2026-05-02", "11:00", 4), // 3 vs 4
+  { ...game("2026-04-25", "13:00", 1), isHome: true }, // 1 vs 3
+  { ...game("2026-05-02", "11:00", 4), isHome: true }, // 3 vs 4
   bye("2026-05-09"), // BYE: TEAM 3
-  game("2026-05-16", "11:00", 2), // 2 vs 3
-  game("2026-05-23", "11:00", 5), // 5 vs 3
-  game("2026-05-30", "11:00", 1), // 1 vs 3
-  game("2026-06-06", "13:00", 4), // 3 vs 4
+  { ...game("2026-05-16", "11:00", 2), isHome: true }, // 2 vs 3
+  { ...game("2026-05-23", "11:00", 5), isHome: true }, // 5 vs 3
+  { ...game("2026-05-30", "11:00", 1), isHome: true }, // 1 vs 3
+  { ...game("2026-06-06", "13:00", 4), isHome: true }, // 3 vs 4
   bye("2026-06-13"), // BYE: TEAM 3
 ].sort((a, b) => {
   const byDate = a.date.localeCompare(b.date);
