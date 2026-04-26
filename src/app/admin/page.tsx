@@ -5,7 +5,7 @@ import clsx from "clsx";
 import { SCHEDULE, TEAMS } from "@/lib/schedule";
 import { CalendarLinkCard } from "@/components/CalendarLinks";
 import { AddPlayerForm } from "@/components/AddPlayerForm";
-import { AudioProvider } from "@/components/AudioProvider";
+import { AudioProvider, useAudioPlayer } from "@/components/AudioProvider";
 import type { Player } from "@/lib/players";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -325,7 +325,7 @@ function GamesTab() {
     fetch("/api/overrides")
       .then((r) => r.json())
       .then(setOverrides)
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -842,9 +842,9 @@ const FIELD_POSITIONS = [
   "Pitcher 1",
   "Pitcher 2",
   "Shortstop",
-  "Outfield 1st",
-  "Outfield 2nd",
-  "Outfield 3rd",
+  "Right Field",
+  "Ctr Field",
+  "Left Field",
 ];
 
 type LineupTabProps = {
@@ -873,7 +873,7 @@ function loadStoredOrder(): string[] | null {
 function saveOrderToStorage(players: Player[]) {
   try {
     localStorage.setItem(LINEUP_LS_KEY, JSON.stringify(players.map((p) => p.id)));
-  } catch {}
+  } catch { }
 }
 
 /**
@@ -1033,43 +1033,9 @@ function LineupTab({ players, setPlayers, absentIds, setAbsentIds, loaded, setLo
           No players on roster yet. Add players on the Roster tab first.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-team-green/15 bg-white">
-          {/* Header row */}
-          <div className="grid grid-cols-3 bg-team-green px-3 py-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-team-gold">
-              Bat Order
-            </span>
-            <span className="text-center text-[11px] font-bold uppercase tracking-wider text-team-gold">
-              Player
-            </span>
-            <span className="text-right text-[11px] font-bold uppercase tracking-wider text-team-gold">
-              Field
-            </span>
-          </div>
-          {Array.from({ length: 9 }, (_, i) => {
-            const player = activePlayers[i];
-            return (
-              <div
-                key={i}
-                className={clsx(
-                  "grid grid-cols-3 items-center px-3 py-2.5",
-                  i < 8 && "border-b border-team-green/10",
-                  !player && "opacity-35"
-                )}
-              >
-                <span className="text-[12px] font-semibold text-team-green/60">
-                  Bat {i + 1}
-                </span>
-                <span className="text-center text-[14px] font-bold text-team-green-dark">
-                  {player?.firstName ?? "—"}
-                </span>
-                <span className="text-right text-[12px] text-team-green/70">
-                  {FIELD_POSITIONS[i]}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+        <AudioProvider>
+          <LineupGrid activePlayers={activePlayers} />
+        </AudioProvider>
       )}
 
       {/* Mark Absent collapsible */}
@@ -1128,6 +1094,119 @@ function LineupTab({ players, setPlayers, absentIds, setAbsentIds, loaded, setLo
         </div>
       )}
     </section>
+  );
+}
+
+// ─── Lineup grid (needs AudioProvider in tree) ────────────────────────────────
+
+function LineupGrid({ activePlayers }: { activePlayers: Player[] }) {
+  const { currentId, play } = useAudioPlayer();
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-team-green/15 bg-white">
+      <div className="flex items-center bg-team-green px-3 py-2">
+        <span className="w-10 shrink-0 text-[11px] font-bold uppercase tracking-wider text-team-gold">
+          Bat
+        </span>
+        <span className="flex-1 text-center text-[11px] font-bold uppercase tracking-wider text-team-gold">
+          Player
+        </span>
+        <span className="w-[72px] shrink-0 text-right text-[11px] font-bold uppercase tracking-wider text-team-gold">
+          Field
+        </span>
+      </div>
+      {Array.from({ length: 9 }, (_, i) => {
+        const player = activePlayers[i];
+        const song = player?.song;
+        const isPlaying = currentId === player?.id;
+        const shortTitle = song
+          ? song.trackName.length > 8
+            ? song.trackName.slice(0, 8) + "…"
+            : song.trackName
+          : null;
+
+        return (
+          <div
+            key={i}
+            className={clsx(
+              "flex items-center gap-2 px-3 py-2.5",
+              i < 8 && "border-b border-team-green/10",
+              !player && "opacity-35"
+            )}
+          >
+            <span className="w-10 shrink-0 text-[12px] font-semibold text-team-green/60">
+              Bat {i + 1}
+            </span>
+
+            {/* Fixed-width columns so thumbnail + play button stay in the same vertical column */}
+            <div className="flex flex-1 items-center justify-center gap-1.5">
+              <span className="w-16 shrink-0 truncate text-right text-[14px] font-bold text-team-green-dark">
+                {player?.firstName ?? "—"}
+              </span>
+              {song ? (
+                <>
+                  {song.artworkUrl ? (
+                    <img
+                      src={song.artworkUrl}
+                      alt=""
+                      width={20}
+                      height={20}
+                      className="h-5 w-5 shrink-0 rounded"
+                    />
+                  ) : (
+                    <div className="h-5 w-5 shrink-0 rounded bg-team-green/10" />
+                  )}
+                  <span className="w-14 shrink-0 whitespace-nowrap text-[11px] text-team-green/60">{shortTitle}</span>
+                  {song.previewUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => play(player!.id, song.previewUrl!)}
+                      aria-label={isPlaying ? "Stop" : "Play"}
+                      className={clsx(
+                        "tap flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors",
+                        isPlaying
+                          ? "bg-team-gold text-team-green-dark"
+                          : "bg-team-green text-team-gold"
+                      )}
+                    >
+                      {isPlaying ? <PauseIconXs /> : <PlayIconXs />}
+                    </button>
+                  ) : (
+                    <div className="h-5 w-5 shrink-0" />
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="h-5 w-5 shrink-0" />
+                  <span className="w-14 shrink-0" />
+                  <div className="h-5 w-5 shrink-0" />
+                </>
+              )}
+            </div>
+
+            <span className="w-[72px] shrink-0 text-right text-[12px] text-team-green/70">
+              {FIELD_POSITIONS[i]}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlayIconXs() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  );
+}
+
+function PauseIconXs() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
+    </svg>
   );
 }
 
